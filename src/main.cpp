@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <SPI.h>
 #include <Wire.h>
 #include "MS5837.h"
 #include <Wifi.h>
