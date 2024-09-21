@@ -36,8 +36,8 @@ unsigned long previousTime = 0;
 const long timeoutTime = 2000; // Define timeout time in milliseconds (example: 2000ms = 2s)
 String header;
 const long gmtOffset_sec = -18000;
-float depthPascal;
-float depthMeter;
+float depthPascal =0;
+float depthMeter = 0;
 int runNum = 0;
 bool diving;
 bool atBottom = false;
@@ -59,6 +59,7 @@ typedef struct {
     int lSec;
   float depthPa;
   float depthM;
+  char  packet;
 } sReadings;
 
 sReadings *psram_Readings;
@@ -88,7 +89,7 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
 
   // initialize USB serial converter so we have a port created
    Serial.begin(115200);
-    //while (! Serial) delay(10);
+   while (! Serial) delay(10);
   
     delay(100);
 
@@ -113,22 +114,17 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
     
 //}
 getTime();
+Serial.println("Chooch has begun");
 }
 
 void loop() {
+  Serial.println("Looped");
   //sensor.read();
   //depthPascal = sensor.pressure();
   //depthMeter = sensor.depth();
-  //Serial.print("PN06   ");
-  //Serial.print(rtc.getTime("%H:%M:%S"));
-  //Serial.print(" EST  ");
-  //Serial.print(depthPascal/10.0f);
-  //Serial.print("kPa  ");
-  //Serial.print(depthMeter);
-  //Serial.println(" meters");
   psram_Readings[readingCnt].runNumber = runNum;
-  psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        // Units °C
-  psram_Readings[readingCnt].depthM = depthMeter;      // Units % RH
+  psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
+  psram_Readings[readingCnt].depthM = depthMeter;      
   psram_Readings[readingCnt].lHour = rtc.getHour();       // current hour
   psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
   psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
@@ -142,10 +138,12 @@ void loop() {
      //   "kPa  " + String(psram_Readings[r].depthM) + " meters");
   //}
  delay(2000);
+
  if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
   WiFi.disconnect();
   WiFi.begin(ssid, password);
   flashLED(2);
+  Serial.println("Lost wifi");
  }
 
 WiFiClient client = server.available();   // Listen for incoming clients
@@ -186,21 +184,15 @@ WiFiClient client = server.available();   // Listen for incoming clients
             client.println(".sensor { color:white; font-weight: bold; background-color: #bcbcbc; padding: 1px; }");
             client.println("</style></head><body><h1>Da Floaty Boi</h1>");
             // Add button
-            client.println("<button onclick=\"triggerFunction()\">DIVE!</button>");
-            client.println("<script>");
-            client.println("function triggerFunction() {");
-            client.println("fetch('/trigger-function', { method: 'POST' })");
-            client.println(".then(response => response.text())");
-            client.println(".then(data => console.log(data))");
-            client.println(".catch(error => console.error('Error:', error));");
-            client.println("}");
-            client.println("</script>");
+
+            // <button onclick="myFunction()">Click Me</button>
+            client.println("<input type=\"button\" value=\"Click Me\" onclick=dive()>");
             client.println("</body></html>");
             for (int r = 0; r < readingCnt; r++){
-            client.println("<p>penis</p>");
-
+            client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN06  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
+        "kPa  " + String(psram_Readings[r].depthM) + " meters)</p>");
             }
-            
+         
             // The HTTP response ends with another blank line
             client.println();
             // Break out of the while loop
@@ -261,10 +253,12 @@ void getTime(void){
     digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     delay(1000);              // wait for a second
     digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    Serial.println("No wifi");
   }
   while (Ping.ping("www.google.com") == false) {
     flashLED(3);
     delay(2000);
+    Serial.print("No internet");
   }
 
   server.begin();
@@ -286,7 +280,6 @@ void flashLED(int flashes) {
 }
 
 void dive(void) {
-   Serial1.println("180");
    Serial.println("I'ma diving bitch!");
     delay (4000); //For one second.
    Serial1.println("90");
