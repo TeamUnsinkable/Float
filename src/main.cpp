@@ -63,7 +63,7 @@ typedef struct {
 } sReadings;
 
 sReadings *psram_Readings;
-//Servo myservo = Servo();
+Servo myservo = Servo();
 MS5837 sensor;
 WiFiServer server(80);
 ESP32Time rtc(0);
@@ -281,7 +281,7 @@ void flashLED(int flashes) {
 
 void dive(void) {
    Serial.println("I'ma diving bitch!");
-    delay (4000); //For one second.
+    delay (4000); //For one second. Just one, only one
    Serial1.println("90");
     atBottom = false;
     JustInCase = 0;
