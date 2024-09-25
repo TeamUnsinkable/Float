@@ -186,7 +186,7 @@ WiFiClient client = server.available();   // Listen for incoming clients
             // Add button
 
             // <button onclick="myFunction()">Click Me</button>
-            client.println("<input type=\"button\" value=\"Click Me\" onclick=dive()>");
+            client.println("<button ondblclick = \"dive()\"> Click Me");
             client.println("</body></html>");
             for (int r = 0; r < readingCnt; r++){
             client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN06  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
@@ -206,17 +206,7 @@ WiFiClient client = server.available();   // Listen for incoming clients
       }
     }
 
-    // Check if the request was a POST to /trigger-function
-    if (header.indexOf("POST /trigger-function") >= 0) {
-      Serial.println("Button was clicked");
-      // Respond to the POST request
-      dive();
-      client.println("HTTP/1.1 200 OK");
-      client.println("Content-type:text/plain");
-      client.println("Connection: close");
-      client.println();
-      client.println("Function executed successfully!");
-    }
+
 
     // Clear the header variable
     header = "";
