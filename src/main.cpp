@@ -63,7 +63,7 @@ typedef struct {
 } sReadings;
 
 sReadings *psram_Readings;
-Servo myservo = Servo();
+//Servo myservo = Servo();
 MS5837 sensor;
 WiFiServer server(80);
 ESP32Time rtc(0);
