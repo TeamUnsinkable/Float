@@ -186,7 +186,7 @@ WiFiClient client = server.available();   // Listen for incoming clients
             // Add button
 
             // <button onclick="myFunction()">Click Me</button>
-            client.println("<button ondblclick = \"dive()\"> Click Me");
+            client.println("<button ondblclick = \"dive()\"> Click Me !</button>");
             client.println("</body></html>");
             for (int r = 0; r < readingCnt; r++){
             client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN06  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
