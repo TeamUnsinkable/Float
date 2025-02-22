@@ -11,8 +11,8 @@
 #include <ESP32Ping.h>
 //#include "Servo.h"
 #include <Adafruit_PWMServoDriver.h>
-
-
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 
 #define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
@@ -63,18 +63,90 @@ typedef struct {
 } sReadings;
 
 sReadings *psram_Readings;
-Servo myservo = Servo();
+//Servo myservo = Servo();
 MS5837 sensor;
-WiFiServer server(80);
+//WiFiServer server(80);
 ESP32Time rtc(0);
 IPAddress local_IP(192, 168, 165, 183);
 IPAddress gateway(192, 168, 165, 1);
 IPAddress subnet(255, 255, 0, 0);
 //Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
+// HTML web page
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+  <head>
+    <title>ESP Pushbutton Web Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: Arial; text-align: center; margin:0px auto; padding-top: 30px;}
+      .button {
+        padding: 10px 20px;
+        font-size: 24px;
+        text-align: center;
+        outline: none;
+        color: #fff;
+        background-color: #2f4468;
+        border: none;
+        border-radius: 5px;
+        box-shadow: 0 6px #999;
+        cursor: pointer;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: rgba(0,0,0,0);
+      }  
+      .button:hover {background-color: #1f2e45}
+      .button:active {
+        background-color: #1f2e45;
+        box-shadow: 0 4px #666;
+        transform: translateY(2px);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ESP Pushbutton Web Server</h1>
+    <button class="button" onmousedown="toggleCheckbox('on');" ontouchstart="toggleCheckbox('on');" onmouseup="toggleCheckbox('off');" ontouchend="toggleCheckbox('off');">LED PUSHBUTTON</button>
+   <script>
+   function toggleCheckbox(x) {
+     var xhr = new XMLHttpRequest();
+     xhr.open("GET", "/" + x, true);
+     xhr.send();
+   }
+  </script>
+  </body>
+</html>)rawliteral";
+
+void notFound(AsyncWebServerRequest *request) {
+  request->send(404, "text/plain", "Not found");
+}
+
+AsyncWebServer server(80);
 
 
 void setup() {
+
+getTime();
+   // Send web page to client
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html);
+  });
+
+  // Receive an HTTP GET request
+  server.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    dive();
+    request->send(200, "text/plain", "ok");
+  });
+
+  // Receive an HTTP GET request
+  server.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "ok");
+  });
+  
+  server.onNotFound(notFound);
 //  if (!WiFi.config(local_IP, gateway, subnet)) {\]
 //  Serial.println("STA Failed to configure");
 //}
@@ -113,7 +185,7 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
   //sensor.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
     
 //}
-getTime();
+
 Serial.println("Chooch has begun");
 }
 
@@ -146,9 +218,9 @@ void loop() {
   Serial.println("Lost wifi");
  }
 
-WiFiClient client = server.available();   // Listen for incoming clients
+//WiFiClient client = server.available();   // Listen for incoming clients
 
-  if (client) {                             // If a new client connects,
+  /*if (client) {                             // If a new client connects,
     currentTime = millis();
     previousTime = currentTime;
     Serial.println("New Client.");          // Print a message out in the serial port
@@ -186,7 +258,7 @@ WiFiClient client = server.available();   // Listen for incoming clients
             // Add button
 
             // <button onclick="myFunction()">Click Me</button>
-            client.println("<button ondblclick = \"dive()\"> Click Me");
+            client.println("<script><button onclick = \"dive()\"> Click Me 69</button>");
             client.println("</body></html>");
             for (int r = 0; r < readingCnt; r++){
             client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN06  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
@@ -216,7 +288,7 @@ WiFiClient client = server.available();   // Listen for incoming clients
     Serial.println("");
   }
 
-
+*/
 
 if (diving == true) {
         pressureValueMax = depthPascal + 3; //Sets pressure range
@@ -226,10 +298,6 @@ if (diving == true) {
         }
         JustInCase = JustInCase + 1;
     }
-    Serial1.print("0");
-    delay(5500); //For one second
-    Serial1.print("90");
-    diving = false;
     
 }
 
@@ -278,3 +346,4 @@ void dive(void) {
     diving = true; 
     runNum++;   
 }
+
