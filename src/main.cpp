@@ -108,8 +108,8 @@ const char index_html[] PROGMEM = R"rawliteral(
     </style>
   </head>
   <body>
-    <h1>ESP Pushbutton Web Server</h1>
-    <button class="button" onmousedown="toggleCheckbox('on');" ontouchstart="toggleCheckbox('on');" onmouseup="toggleCheckbox('off');" ontouchend="toggleCheckbox('off');">LED PUSHBUTTON</button>
+    <h1>ESP32-Driven Float</h1>
+    <button class="button" onmousedown="toggleCheckbox('on');" ontouchstart="toggleCheckbox('on');" onmouseup="toggleCheckbox('off');" ontouchend="toggleCheckbox('off');">DIVE!</button>
    <script>
    function toggleCheckbox(x) {
      var xhr = new XMLHttpRequest();
@@ -124,29 +124,31 @@ void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
 }
 
-AsyncWebServer server(80);
+AsyncWebServer server1(80);
+WiFiServer server2(8080);
+
 
 
 void setup() {
 
 getTime();
    // Send web page to client
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+  server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html);
   });
 
   // Receive an HTTP GET request
-  server.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
+  server1.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
     dive();
     request->send(200, "text/plain", "ok");
   });
 
   // Receive an HTTP GET request
-  server.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
+  server1.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "ok");
   });
   
-  server.onNotFound(notFound);
+  server1.onNotFound(notFound);
 //  if (!WiFi.config(local_IP, gateway, subnet)) {\]
 //  Serial.println("STA Failed to configure");
 //}
@@ -192,8 +194,8 @@ Serial.println("Chooch has begun");
 void loop() {
   Serial.println("Looped");
   //sensor.read();
-  //depthPascal = sensor.pressure();
-  //depthMeter = sensor.depth();
+  depthPascal = 69; //sensor.pressure();
+  depthMeter = 69; //sensor.depth();
   psram_Readings[readingCnt].runNumber = runNum;
   psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
   psram_Readings[readingCnt].depthM = depthMeter;      
@@ -218,9 +220,9 @@ void loop() {
   Serial.println("Lost wifi");
  }
 
-//WiFiClient client = server.available();   // Listen for incoming clients
+WiFiClient client = server2.available();   // Listen for incoming clients
 
-  /*if (client) {                             // If a new client connects,
+  if (client) {                             // If a new client connects,
     currentTime = millis();
     previousTime = currentTime;
     Serial.println("New Client.");          // Print a message out in the serial port
@@ -255,11 +257,6 @@ void loop() {
             client.println("td { border: none; padding: 12px; }");
             client.println(".sensor { color:white; font-weight: bold; background-color: #bcbcbc; padding: 1px; }");
             client.println("</style></head><body><h1>Da Floaty Boi</h1>");
-            // Add button
-
-            // <button onclick="myFunction()">Click Me</button>
-            client.println("<script><button onclick = \"dive()\"> Click Me 69</button>");
-            client.println("</body></html>");
             for (int r = 0; r < readingCnt; r++){
             client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN06  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
         "kPa  " + String(psram_Readings[r].depthM) + " meters)</p>");
@@ -288,7 +285,6 @@ void loop() {
     Serial.println("");
   }
 
-*/
 
 if (diving == true) {
         pressureValueMax = depthPascal + 3; //Sets pressure range
@@ -319,7 +315,8 @@ void getTime(void){
     Serial.print("No internet");
   }
 
-  server.begin();
+  server1.begin();
+  server2.begin();
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         struct tm timeinfo = rtc.getTimeStruct();
         if (getLocalTime(&timeinfo)){
