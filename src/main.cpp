@@ -259,7 +259,7 @@ WiFiClient client = server2.available();   // Listen for incoming clients
             client.println("</style></head><body><h1>Da Floaty Boi</h1>");
             for (int r = 0; r < readingCnt; r++){
             client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN06  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
-        "kPa  " + String(psram_Readings[r].depthM) + " meters)</p>");
+        "kPa  " + String(psram_Readings[r].depthM) + " meters</p>");
             }
          
             // The HTTP response ends with another blank line
