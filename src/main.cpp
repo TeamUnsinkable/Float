@@ -19,7 +19,7 @@
 #define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
 #define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
-#define maximumReadings 200
+#define maximumReadings 8000
 bool NewReading = false;
 bool Logging = false;
 int LoggingEnabler = 0;
@@ -163,7 +163,7 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
 
   // initialize USB serial converter so we have a port created
    Serial.begin(115200);
-   while (! Serial) delay(10);
+   //while (! Serial) delay(10);
   
     delay(100);
 
