@@ -70,7 +70,7 @@ ESP32Time rtc(0);
 IPAddress local_IP(192, 168, 165, 183);
 IPAddress gateway(192, 168, 165, 1);
 IPAddress subnet(255, 255, 0, 0);
-//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 // HTML web page
 const char index_html[] PROGMEM = R"rawliteral(
@@ -169,33 +169,42 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
 
     Serial.println("Begin chooch");
   Wire.begin();
-  //pwm.begin();
-  //pwm.setOscillatorFrequency(27000000);
-  //pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
 
   delay(10);
+ 
   // Initialize pressure sensor
   // Returns true if initialization was successful
   // We can't continue with the rest of the program unless we can initialize the sensor
-  //while (!sensor.init()) {
-   //Serial.println("Init failed!");
-   //Serial.println("Are SDA/SCL connected correctly?");
-   //Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
-   //Serial.println("\n\n\n");
-   //elay(5000);
-
-  //sensor.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
+  while (!sensor.init()) {
+   Serial.println("Init failed!");
+   Serial.println("Are SDA/SCL connected correctly?");
+   Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
+   Serial.println("\n\n\n");
+   delay(100);
+   flashLED(4);
+}
+  sensor.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
     
 //}
 
 Serial.println("Chooch has begun");
+flashLED(8);
 }
 
 void loop() {
   Serial.println("Looped");
-  //sensor.read();
-  depthPascal = 69; //sensor.pressure();
-  depthMeter = 69; //sensor.depth();
+  pwm.writeMicroseconds(0, 1100);
+  delay(2000);
+  pwm.writeMicroseconds(0, 1900);
+  delay(2000);
+  pwm.writeMicroseconds(0, 1500);
+  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+  delay(200);              // wait for a second
+  digitalWrite(LED_BUILTIN, LOW);
+
   psram_Readings[readingCnt].runNumber = runNum;
   psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
   psram_Readings[readingCnt].depthM = depthMeter;      
@@ -203,15 +212,18 @@ void loop() {
   psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
   psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
   readingCnt++;
-  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(500);              // wait for a second
-  digitalWrite(LED_BUILTIN, LOW);
+  
+  
+  //sensor.read();
+  //depthPascal = sensor.pressure();
+ // depthMeter = sensor.depth();
+  
+  
  // for (int r = 0; r < readingCnt; r++){
        // Now output readings in CSV format to the serial port
    //     Serial.println("Profile#: " + String(psram_Readings[r].runNumber) + "   PN06    " + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
      //   "kPa  " + String(psram_Readings[r].depthM) + " meters");
   //}
- delay(2000);
 
  if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
   WiFi.disconnect();
@@ -219,6 +231,7 @@ void loop() {
   flashLED(2);
   Serial.println("Lost wifi");
  }
+
 
 WiFiClient client = server2.available();   // Listen for incoming clients
 
@@ -285,7 +298,6 @@ WiFiClient client = server2.available();   // Listen for incoming clients
     Serial.println("");
   }
 
-
 if (diving == true) {
         pressureValueMax = depthPascal + 3; //Sets pressure range
         pressureValueMin = depthPascal - 3; //Sets pressure range 
@@ -294,6 +306,7 @@ if (diving == true) {
         }
         JustInCase = JustInCase + 1;
     }
+
     
 }
 
@@ -303,10 +316,7 @@ void getTime(void){
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-    delay(1000);              // wait for a second
-    digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    flashLED(1);
     Serial.println("No wifi");
   }
   while (Ping.ping("www.google.com") == false) {
@@ -335,9 +345,12 @@ void flashLED(int flashes) {
 }
 
 void dive(void) {
-   Serial.println("I'ma diving bitch!");
-    delay (4000); //For one second. Just one, only one
-   Serial1.println("90");
+    Serial.println("I'ma diving bitch!");
+    pwm.writeMicroseconds(0, 1300);
+    delay(100);
+    pwm.writeMicroseconds(0, 1500);
+    //delay (4000); //For one second. Just one, only one
+   //Serial1.println("90");
     atBottom = false;
     JustInCase = 0;
     diving = true; 
