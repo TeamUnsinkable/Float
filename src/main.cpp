@@ -209,16 +209,7 @@ void loop() {
   psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
   readingCnt++;
 
-  maestro.setTarget(0, 6000);
-  delay(200);
 
-  // Set the target of channel 0 to 1750 us, and wait 2 seconds.
-  maestro.setTarget(0, 7000);
-  delay(200);
-
-  // Set the target of channel 0 to 1250 us, and wait 2 seconds.
-  maestro.setTarget(0, 5000);
-  delay(200);
   
   
   //sensor.read();
@@ -350,9 +341,16 @@ void flashLED(int flashes) {
 }
 
 void dive(void) {
-    Serial.println("I'ma diving bitch!");
+  Serial.println("I'ma diving bitch!");
     //delay (4000); //For one second. Just one, only one
    //Serial1.println("90");
+  maestro.setTarget(0, 7000);
+  delay(200);
+
+  // Set the target of channel 0 to 1250 us, and wait 2 seconds.
+  maestro.setTarget(0, 5000);
+  delay(200);
+  maestro.setTarget(0, 6000);
     atBottom = false;
     JustInCase = 0;
     diving = true; 
