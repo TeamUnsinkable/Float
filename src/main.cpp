@@ -13,6 +13,10 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <PololuMaestro.h>
+
+HardwareSerial mySerial(1);
+
 
 #define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
@@ -29,8 +33,8 @@ int readingCnt = 0;
 int prevReadingCnt = 0;
 const char* ntpServer = "pool.ntp.org";
 const int daylightOffset_sec = 3600;
-const char* ssid = "SM-N950U48f";
-const char* password = "bucketman";
+const char* ssid = "Justin's S25+"; //"SM-N950U48f";
+const char* password = "8e9uphtuumacfst";//"bucketman";
 unsigned long currentTime = millis(); 
 unsigned long previousTime = 0; 
 const long timeoutTime = 2000; // Define timeout time in milliseconds (example: 2000ms = 2s)
@@ -70,7 +74,8 @@ ESP32Time rtc(0);
 IPAddress local_IP(192, 168, 165, 183);
 IPAddress gateway(192, 168, 165, 1);
 IPAddress subnet(255, 255, 0, 0);
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+MicroMaestro maestro(mySerial);
+
 
 // HTML web page
 const char index_html[] PROGMEM = R"rawliteral(
@@ -166,27 +171,25 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
    //while (! Serial) delay(10);
   
     delay(100);
+    
 
     Serial.println("Begin chooch");
   Wire.begin();
-  pwm.begin();
-  pwm.setOscillatorFrequency(27000000);
-  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
 
   delay(10);
- 
+  mySerial.begin(9600);
   // Initialize pressure sensor
   // Returns true if initialization was successful
   // We can't continue with the rest of the program unless we can initialize the sensor
-  while (!sensor.init()) {
-   Serial.println("Init failed!");
-   Serial.println("Are SDA/SCL connected correctly?");
-   Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
-   Serial.println("\n\n\n");
-   delay(100);
-   flashLED(4);
-}
-  sensor.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
+  //while (!sensor.init()) {
+   //Serial.println("Init failed!");
+   //Serial.println("Are SDA/SCL connected correctly?");
+   //Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
+   //Serial.println("\n\n\n");
+   //delay(100);
+   //flashLED(4);
+//}
+  //sensor.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
     
 //}
 
@@ -196,14 +199,7 @@ flashLED(8);
 
 void loop() {
   Serial.println("Looped");
-  pwm.writeMicroseconds(0, 1100);
-  delay(2000);
-  pwm.writeMicroseconds(0, 1900);
-  delay(2000);
-  pwm.writeMicroseconds(0, 1500);
-  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(200);              // wait for a second
-  digitalWrite(LED_BUILTIN, LOW);
+  flashLED(1);
 
   psram_Readings[readingCnt].runNumber = runNum;
   psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
@@ -212,6 +208,17 @@ void loop() {
   psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
   psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
   readingCnt++;
+
+  maestro.setTarget(0, 6000);
+  delay(200);
+
+  // Set the target of channel 0 to 1750 us, and wait 2 seconds.
+  maestro.setTarget(0, 7000);
+  delay(200);
+
+  // Set the target of channel 0 to 1250 us, and wait 2 seconds.
+  maestro.setTarget(0, 5000);
+  delay(200);
   
   
   //sensor.read();
@@ -231,7 +238,6 @@ void loop() {
   flashLED(2);
   Serial.println("Lost wifi");
  }
-
 
 WiFiClient client = server2.available();   // Listen for incoming clients
 
@@ -297,7 +303,6 @@ WiFiClient client = server2.available();   // Listen for incoming clients
     Serial.println("Client disconnected.");
     Serial.println("");
   }
-
 if (diving == true) {
         pressureValueMax = depthPascal + 3; //Sets pressure range
         pressureValueMin = depthPascal - 3; //Sets pressure range 
@@ -307,7 +312,7 @@ if (diving == true) {
         JustInCase = JustInCase + 1;
     }
 
-    
+
 }
 
 
@@ -346,9 +351,6 @@ void flashLED(int flashes) {
 
 void dive(void) {
     Serial.println("I'ma diving bitch!");
-    pwm.writeMicroseconds(0, 1300);
-    delay(100);
-    pwm.writeMicroseconds(0, 1500);
     //delay (4000); //For one second. Just one, only one
    //Serial1.println("90");
     atBottom = false;
