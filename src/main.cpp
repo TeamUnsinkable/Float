@@ -9,13 +9,12 @@
 #include <time.h>
 #include <stdio.h>
 #include <ESP32Ping.h>
-//#include "Servo.h"
-#include <Adafruit_PWMServoDriver.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <PololuMaestro.h>
+#include <TMC2209.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-HardwareSerial mySerial(1);
 
 
 #define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
@@ -23,7 +22,8 @@ HardwareSerial mySerial(1);
 #define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
 #define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
-#define maximumReadings 8000
+#define maximumReadings 2000
+#define TXD2 17
 bool NewReading = false;
 bool Logging = false;
 int LoggingEnabler = 0;
@@ -33,8 +33,8 @@ int readingCnt = 0;
 int prevReadingCnt = 0;
 const char* ntpServer = "pool.ntp.org";
 const int daylightOffset_sec = 3600;
-const char* ssid = "Justin's S25+"; //"SM-N950U48f";
-const char* password = "8e9uphtuumacfst";//"bucketman";
+const char* ssid = "SM-N950U48f"; //"Justin's S25+";
+const char* password = "bucketman";//"8e9uphtuumacfst";
 unsigned long currentTime = millis(); 
 unsigned long previousTime = 0; 
 const long timeoutTime = 2000; // Define timeout time in milliseconds (example: 2000ms = 2s)
@@ -48,12 +48,24 @@ bool atBottom = false;
 int JustInCase = 0;
 double pressureValueMax;
 double pressureValueMin;
-const uint8_t servonum = 0;
+double deltaP;
+static int lastSecond = -1;
+int sec;
+bool limit_hit = false;
 
+unsigned long lastReportMs = 0;
+unsigned long loopCount = 0;
 
 void getTime();
 void flashLED(int times);
+void ledTask(void*);
 void dive();
+void surface();
+void home();
+void stop();
+void flashLED_async(uint32_t flashes);
+void defineHTML(void);
+
 
 
 typedef struct {
@@ -67,17 +79,352 @@ typedef struct {
 } sReadings;
 
 sReadings *psram_Readings;
-//Servo myservo = Servo();
 MS5837 sensor;
+
+extern const char index_html[] PROGMEM;
+
+
 //WiFiServer server(80);
 ESP32Time rtc(0);
 IPAddress local_IP(192, 168, 165, 183);
 IPAddress gateway(192, 168, 165, 1);
 IPAddress subnet(255, 255, 0, 0);
-MicroMaestro maestro(mySerial);
+HardwareSerial & serial_stream = Serial1;
+TMC2209 stepper_driver;
+
+static const long SERIAL_BAUD = 9600;
+static const int  UART_PIN    = 17; 
+
+TaskHandle_t ledTaskHandle = nullptr;
+extern const char index_html[] PROGMEM;
+
+void notFound(AsyncWebServerRequest *request) {
+  request->send(404, "text/plain", "Not found");
+}
+
+AsyncWebServer server1(80);
+WiFiServer server2(8080);
+
+/// pin 16 and 17 are for endstops
+void setup() {
+
+getTime();
+   // Send web page to client
+  server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html);
+  });
+
+  // Receive an HTTP GET request
+  server1.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    dive();
+    request->send(200, "text/plain", "ok");
+  });
+
+  // Receive an HTTP GET request
+  server1.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "ok");
+  });
+  
+  server1.onNotFound(notFound);
+//  if (!WiFi.config(local_IP, gateway, subnet)) {\]
+//  Serial.println("STA Failed to configure");
+//}
+pinMode(6, INPUT_PULLDOWN);
+attachInterrupt(digitalPinToInterrupt(6), stop, FALLING);
+pinMode(9, OUTPUT);
+digitalWrite(9, HIGH);
+
+pinMode(LED_BUILTIN, OUTPUT);
+psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
+        if(psramInit()){
+        Serial.println("\nPSRAM is correctly initialized");
+        }else{
+        Serial.println("PSRAM not available");
+        }
+
+  // initialize USB serial converter so we have a port created
+   Serial.begin(115200);
+   //while (! Serial) delay(10);
+  
+    delay(100);
+    stepper_driver.setup(serial_stream,
+                       SERIAL_BAUD,
+                       TMC2209::SERIAL_ADDRESS_0,
+                       UART_PIN,   // RX pin (same pin for 1-wire)
+                       UART_PIN);
+    delay(100);
+    
+
+    Serial.println("Begin chooch");
+  Wire.begin();
+
+  xTaskCreate(ledTask,"LED",1024,nullptr,1,&ledTaskHandle);
+  sensor.setModel(MS5837::MS5837_02BA);
+
+  // Initialize pressure sensor
+  // We can't continue with the rest of the program unless we can initialize the sensor
+  while (!sensor.init()) {
+    Serial.println("Init failed!");
+    Serial.println("Are SDA/SCL connected correctly?");
+    Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
+    Serial.println("\n\n\n");
+    delay(100);
+    flashLED(4);
+}
+sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
 
 
-// HTML web page
+stepper_driver.setRunCurrent(100);
+  stepper_driver.enableCoolStep();
+  stepper_driver.enable();
+  stepper_driver.disableStealthChop();
+Serial.println("Chooch has begun");
+flashLED_async(8);
+home(); 
+
+/*
+stepper_driver.enableInverseMotorDirection();
+limit_hit = true;
+  stepper_driver.moveAtVelocity(240000);
+  delay(3000);
+  stepper_driver.moveAtVelocity(0);
+  */
+}
+
+void loop() {
+  //Serial.println("Looped");
+  flashLED_async(1);
+  if (limit_hit == true) {
+    stepper_driver.moveAtVelocity(0);
+    Serial.println("Stepper stopped!");
+    limit_hit = false;
+    }
+  
+  sensor.read();
+  depthMeter = sensor.depth();
+  depthPascal = sensor.pressure();
+  sec = rtc.getSecond();
+  if (sec != lastSecond && sec % 5 == 0)
+  {
+  psram_Readings[readingCnt].runNumber = runNum;
+  psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
+  psram_Readings[readingCnt].depthM = depthMeter;      
+  psram_Readings[readingCnt].lHour = rtc.getHour();       // current hour
+  psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
+  psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
+  readingCnt++;
+  Serial.println("Grabbed a data");
+  }
+  lastSecond = sec;
+/*
+  for (int r = 0; r < readingCnt; r++){
+       // Now output readings in CSV format to the serial port
+       Serial.println("Profile#: " + String(psram_Readings[r].runNumber) + "   EX01    " + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
+    "kPa  " + String(psram_Readings[r].depthM) + " meters");
+  }
+*/
+ if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
+  WiFi.disconnect();
+  WiFi.begin(ssid, password);
+  flashLED(2);
+  Serial.println("Lost wifi");
+ }
+
+WiFiClient client = server2.available();   // Listen for incoming clients
+
+  if (client) {                             // If a new client connects,
+    currentTime = millis();
+    previousTime = currentTime;
+    Serial.println("New Client.");          // Print a message out in the serial port
+    String currentLine = "";                // Make a String to hold incoming data from the client
+    while (client.connected() && currentTime - previousTime <= timeoutTime) {  // Loop while the client's connected
+      currentTime = millis();
+      if (client.available()) {             // If there's bytes to read from the client,
+        char c = client.read();             // Read a byte, then
+        Serial.write(c);                    // Print it out the serial monitor
+        header += c;
+        if (c == '\n') {                    // If the byte is a newline character
+          // If the current line is blank, you got two newline characters in a row.
+          // That's the end of the client HTTP request, so send a response:
+          if (currentLine.length() == 0) {
+            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+            // And a content-type so the client knows what's coming, then a blank line:
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println("Connection: close");
+            client.println();
+            
+            // Display the HTML web page
+            client.println("<!DOCTYPE html><html>");
+            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<link rel=\"icon\" href=\"data:,\">");
+            // CSS to style the table 
+            client.println("<style>body { text-align: center; font-family: \"Trebuchet MS\", Arial;}");
+            client.println("table { border-collapse: collapse; width:35%; margin-left:auto; margin-right:auto; }");
+            client.println("th { padding: 12px; background-color: #0043af; color: white; }");
+            client.println("tr { border: 1px solid #ddd; padding: 12px; }");
+            client.println("tr:hover { background-color: #bcbcbc; }");
+            client.println("td { border: none; padding: 12px; }");
+            client.println(".sensor { color:white; font-weight: bold; background-color: #bcbcbc; padding: 1px; }");
+            client.println("</style></head><body><h1>Da Floaty Boi</h1>");
+            for (int r = 0; r < readingCnt; r++){
+            client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN05  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
+        "kPa  " + String(psram_Readings[r].depthM) + " meters</p>");
+            }
+         
+            // The HTTP response ends with another blank line
+            client.println();
+            // Break out of the while loop
+            break;
+          } else { // If you got a newline, then clear currentLine
+            currentLine = "";
+          }
+        } else if (c != '\r') {  // If you got anything else but a carriage return character,
+          currentLine += c;      // Add it to the end of the currentLine
+        }
+      }
+    }
+
+
+
+    // Clear the header variable
+    header = "";
+    // Close the connection
+    client.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
+  }
+
+if (diving == true) {
+        deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
+        if (JustInCase >= 500){
+            surface();
+        }
+        JustInCase = JustInCase + 1;
+        Serial.println(JustInCase);
+
+    }
+
+}
+
+
+void getTime(void){
+  setCpuFrequencyMhz(240);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    flashLED(1);
+    Serial.println("No wifi");
+  }
+  while (Ping.ping("www.google.com") == false) {
+    flashLED(3);
+    delay(2000);
+    Serial.print("No internet");
+  }
+
+  server1.begin();
+  server2.begin();
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        struct tm timeinfo = rtc.getTimeStruct();
+        if (getLocalTime(&timeinfo)){
+        rtc.setTimeStruct(timeinfo); 
+        Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
+ } 
+} 
+
+void flashLED(int flashes) {
+  for (int i = 0; i < flashes; ++i) {
+  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+  delay(100);              // wait for a second
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(50);    // turn the LED off by making the voltage LOW
+  }
+}
+
+void dive(void) {
+  Serial.println("I'ma divin', bitch!");
+  limit_hit = false;
+  stepper_driver.disableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
+  stepper_driver.moveAtVelocity(240000);
+  Serial.println('1');
+  delay(3000);
+  Serial.println('2');
+  stepper_driver.moveAtVelocity(240001);
+  delay(3000);
+  Serial.println('3');
+  stepper_driver.moveAtVelocity(0);
+  Serial.println('4');
+  atBottom = false;
+  JustInCase = 0;
+  diving = true; 
+  runNum++;   
+}
+
+void surface(void)
+{
+  Serial.println("I'ma surfacin', bitch!");
+  limit_hit = false;
+  stepper_driver.enableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
+  stepper_driver.moveAtVelocity(240000);
+  delay(3000);
+  stepper_driver.moveAtVelocity(240001);
+  delay(3000);
+  stepper_driver.moveAtVelocity(0);
+  diving = false;
+}
+
+void home(void)
+{Serial.println("HOMING"); //print action
+  limit_hit = false;
+  stepper_driver.disableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
+  stepper_driver.moveAtVelocity(160000);
+  while(limit_hit == false)
+  {flashLED(2);}
+  stepper_driver.enableInverseMotorDirection();
+  stepper_driver.moveAtVelocity(160000);
+  delay(900);
+  stepper_driver.disableInverseMotorDirection();
+  limit_hit = false;
+  stepper_driver.moveAtVelocity(16000);
+  while(limit_hit == false)
+  {flashLED(2);}
+  stepper_driver.enableInverseMotorDirection();
+  stepper_driver.moveAtVelocity(240000);
+  delay(200);
+  limit_hit = false;
+  delay(9500);
+  stepper_driver.moveAtVelocity(0);
+}
+
+void stop()
+{
+ limit_hit = true;
+}
+
+void ledTask(void*){
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  for (;;) {
+    // Wait for a flash request (number of flashes passed as value)
+    uint32_t flashes = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    for (uint32_t i = 0; i < flashes; ++i) {
+      digitalWrite(LED_BUILTIN, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(10));
+
+      digitalWrite(LED_BUILTIN, LOW);
+      vTaskDelay(pdMS_TO_TICKS(5));
+    }
+  }
+}
+
+void flashLED_async(uint32_t flashes) {
+  if (!ledTaskHandle) return;
+  xTaskNotifyGive(ledTaskHandle);               // wake task
+  xTaskNotify(ledTaskHandle, flashes, eSetValueWithOverwrite);
+}
+
+
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
   <head>
@@ -125,235 +472,4 @@ const char index_html[] PROGMEM = R"rawliteral(
   </body>
 </html>)rawliteral";
 
-void notFound(AsyncWebServerRequest *request) {
-  request->send(404, "text/plain", "Not found");
-}
-
-AsyncWebServer server1(80);
-WiFiServer server2(8080);
-
-
-
-void setup() {
-
-getTime();
-   // Send web page to client
-  server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index_html);
-  });
-
-  // Receive an HTTP GET request
-  server1.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    dive();
-    request->send(200, "text/plain", "ok");
-  });
-
-  // Receive an HTTP GET request
-  server1.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "ok");
-  });
-  
-  server1.onNotFound(notFound);
-//  if (!WiFi.config(local_IP, gateway, subnet)) {\]
-//  Serial.println("STA Failed to configure");
-//}
-
-pinMode(LED_BUILTIN, OUTPUT);
-psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
-        if(psramInit()){
-        Serial.println("\nPSRAM is correctly initialized");
-        }else{
-        Serial.println("PSRAM not available");
-        }
-
-  // initialize USB serial converter so we have a port created
-   Serial.begin(115200);
-   //while (! Serial) delay(10);
-  
-    delay(100);
-    
-
-    Serial.println("Begin chooch");
-  Wire.begin();
-
-  delay(10);
-  mySerial.begin(9600);
-  // Initialize pressure sensor
-  // Returns true if initialization was successful
-  // We can't continue with the rest of the program unless we can initialize the sensor
-  //while (!sensor.init()) {
-   //Serial.println("Init failed!");
-   //Serial.println("Are SDA/SCL connected correctly?");
-   //Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
-   //Serial.println("\n\n\n");
-   //delay(100);
-   //flashLED(4);
-//}
-  //sensor.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
-    
-//}
-
-Serial.println("Chooch has begun");
-flashLED(8);
-}
-
-void loop() {
-  Serial.println("Looped");
-  flashLED(1);
-
-  psram_Readings[readingCnt].runNumber = runNum;
-  psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
-  psram_Readings[readingCnt].depthM = depthMeter;      
-  psram_Readings[readingCnt].lHour = rtc.getHour();       // current hour
-  psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
-  psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
-  readingCnt++;
-
-
-  
-  
-  //sensor.read();
-  //depthPascal = sensor.pressure();
- // depthMeter = sensor.depth();
-  
-  
- // for (int r = 0; r < readingCnt; r++){
-       // Now output readings in CSV format to the serial port
-   //     Serial.println("Profile#: " + String(psram_Readings[r].runNumber) + "   PN06    " + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
-     //   "kPa  " + String(psram_Readings[r].depthM) + " meters");
-  //}
-
- if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
-  WiFi.disconnect();
-  WiFi.begin(ssid, password);
-  flashLED(2);
-  Serial.println("Lost wifi");
- }
-
-WiFiClient client = server2.available();   // Listen for incoming clients
-
-  if (client) {                             // If a new client connects,
-    currentTime = millis();
-    previousTime = currentTime;
-    Serial.println("New Client.");          // Print a message out in the serial port
-    String currentLine = "";                // Make a String to hold incoming data from the client
-    while (client.connected() && currentTime - previousTime <= timeoutTime) {  // Loop while the client's connected
-      currentTime = millis();
-      if (client.available()) {             // If there's bytes to read from the client,
-        char c = client.read();             // Read a byte, then
-        Serial.write(c);                    // Print it out the serial monitor
-        header += c;
-        if (c == '\n') {                    // If the byte is a newline character
-          // If the current line is blank, you got two newline characters in a row.
-          // That's the end of the client HTTP request, so send a response:
-          if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // And a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println("Connection: close");
-            client.println();
-            
-            // Display the HTML web page
-            client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-            client.println("<link rel=\"icon\" href=\"data:,\">");
-            // CSS to style the table 
-            client.println("<style>body { text-align: center; font-family: \"Trebuchet MS\", Arial;}");
-            client.println("table { border-collapse: collapse; width:35%; margin-left:auto; margin-right:auto; }");
-            client.println("th { padding: 12px; background-color: #0043af; color: white; }");
-            client.println("tr { border: 1px solid #ddd; padding: 12px; }");
-            client.println("tr:hover { background-color: #bcbcbc; }");
-            client.println("td { border: none; padding: 12px; }");
-            client.println(".sensor { color:white; font-weight: bold; background-color: #bcbcbc; padding: 1px; }");
-            client.println("</style></head><body><h1>Da Floaty Boi</h1>");
-            for (int r = 0; r < readingCnt; r++){
-            client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN06  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
-        "kPa  " + String(psram_Readings[r].depthM) + " meters</p>");
-            }
-         
-            // The HTTP response ends with another blank line
-            client.println();
-            // Break out of the while loop
-            break;
-          } else { // If you got a newline, then clear currentLine
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // If you got anything else but a carriage return character,
-          currentLine += c;      // Add it to the end of the currentLine
-        }
-      }
-    }
-
-
-
-    // Clear the header variable
-    header = "";
-    // Close the connection
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
-  }
-if (diving == true) {
-        pressureValueMax = depthPascal + 3; //Sets pressure range
-        pressureValueMin = depthPascal - 3; //Sets pressure range 
-        if (depthPascal >= pressureValueMin || depthPascal <= pressureValueMax){
-            atBottom = 1;
-        }
-        JustInCase = JustInCase + 1;
-    }
-
-
-}
-
-
-void getTime(void){
-  setCpuFrequencyMhz(240);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    flashLED(1);
-    Serial.println("No wifi");
-  }
-  while (Ping.ping("www.google.com") == false) {
-    flashLED(3);
-    delay(2000);
-    Serial.print("No internet");
-  }
-
-  server1.begin();
-  server2.begin();
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-        struct tm timeinfo = rtc.getTimeStruct();
-        if (getLocalTime(&timeinfo)){
-        rtc.setTimeStruct(timeinfo); 
-        Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
- } 
-} 
-
-void flashLED(int flashes) {
-  for (int i = 0; i < flashes; ++i) {
-  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(100);              // wait for a second
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(50);    // turn the LED off by making the voltage LOW
-  }
-}
-
-void dive(void) {
-  Serial.println("I'ma diving bitch!");
-    //delay (4000); //For one second. Just one, only one
-   //Serial1.println("90");
-  maestro.setTarget(0, 7000);
-  delay(200);
-
-  // Set the target of channel 0 to 1250 us, and wait 2 seconds.
-  maestro.setTarget(0, 5000);
-  delay(200);
-  maestro.setTarget(0, 6000);
-    atBottom = false;
-    JustInCase = 0;
-    diving = true; 
-    runNum++;   
-}
 
