@@ -52,18 +52,22 @@ double deltaP;
 static int lastSecond = -1;
 int sec;
 bool limit_hit = false;
+int step_pin = 16;
+int step_rate = 30;
+int steps_to_make;
+
 
 unsigned long lastReportMs = 0;
 unsigned long loopCount = 0;
 
 void getTime();
 void flashLED(int times);
-void ledTask(void*);
+//void ledTask(void*);
 void dive();
 void surface();
 void home();
 void stop();
-void flashLED_async(uint32_t flashes);
+//void flashLED_async(uint32_t flashes);
 void defineHTML(void);
 
 
@@ -95,7 +99,9 @@ TMC2209 stepper_driver;
 static const long SERIAL_BAUD = 9600;
 static const int  UART_PIN    = 17; 
 
-TaskHandle_t ledTaskHandle = nullptr;
+
+
+//TaskHandle_t ledTaskHandle = nullptr;
 extern const char index_html[] PROGMEM;
 
 void notFound(AsyncWebServerRequest *request) {
@@ -158,7 +164,7 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
     Serial.println("Begin chooch");
   Wire.begin();
 
-  xTaskCreate(ledTask,"LED",1024,nullptr,1,&ledTaskHandle);
+  //xTaskCreate(ledTask,"LED",1024,nullptr,1,&ledTaskHandle);
   sensor.setModel(MS5837::MS5837_02BA);
 
   // Initialize pressure sensor
@@ -179,21 +185,35 @@ stepper_driver.setRunCurrent(100);
   stepper_driver.enable();
   stepper_driver.disableStealthChop();
 Serial.println("Chooch has begun");
-flashLED_async(8);
-home(); 
+//flashLED_async(8);
+//home(); 
 
-/*
+
 stepper_driver.enableInverseMotorDirection();
 limit_hit = true;
-  stepper_driver.moveAtVelocity(240000);
-  delay(3000);
+  stepper_driver.moveAtVelocity(160000);
+  delay(5000);
   stepper_driver.moveAtVelocity(0);
-  */
+
+ limit_hit = false;
+
+
+for (int i = 0; i < steps_to_make; i++) {
+  digitalWrite(step_pin, HIGH);
+  delayMicroseconds(step_rate);
+
+  digitalWrite(step_pin, LOW);
+  delayMicroseconds(step_rate);
+  }
+
 }
+
+
+ 
 
 void loop() {
   //Serial.println("Looped");
-  flashLED_async(1);
+  //flashLED_async(1);
   if (limit_hit == true) {
     stepper_driver.moveAtVelocity(0);
     Serial.println("Stepper stopped!");
@@ -297,8 +317,10 @@ WiFiClient client = server2.available();   // Listen for incoming clients
 
 if (diving == true) {
         deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
-        if (JustInCase >= 500){
+        if (JustInCase >= 1000){
+            diving = false;
             surface();
+
         }
         JustInCase = JustInCase + 1;
         Serial.println(JustInCase);
@@ -345,15 +367,9 @@ void dive(void) {
   Serial.println("I'ma divin', bitch!");
   limit_hit = false;
   stepper_driver.disableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
-  stepper_driver.moveAtVelocity(240000);
-  Serial.println('1');
+  stepper_driver.moveAtVelocity(360000);
   delay(3000);
-  Serial.println('2');
-  stepper_driver.moveAtVelocity(240001);
-  delay(3000);
-  Serial.println('3');
   stepper_driver.moveAtVelocity(0);
-  Serial.println('4');
   atBottom = false;
   JustInCase = 0;
   diving = true; 
@@ -362,15 +378,19 @@ void dive(void) {
 
 void surface(void)
 {
-  Serial.println("I'ma surfacin', bitch!");
+  bool uabitch = true;
+  if (uabitch == false) {
+    Serial.println("I'ma surfacin', bitch!");
   limit_hit = false;
   stepper_driver.enableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
-  stepper_driver.moveAtVelocity(240000);
-  delay(3000);
-  stepper_driver.moveAtVelocity(240001);
-  delay(3000);
+  stepper_driver.moveAtVelocity(360000);
+  delay(2900);
   stepper_driver.moveAtVelocity(0);
   diving = false;
+  }
+  else {
+    home();
+  }
 }
 
 void home(void)
@@ -380,6 +400,7 @@ void home(void)
   stepper_driver.moveAtVelocity(160000);
   while(limit_hit == false)
   {flashLED(2);}
+  stepper_driver.moveAtVelocity(0);
   stepper_driver.enableInverseMotorDirection();
   stepper_driver.moveAtVelocity(160000);
   delay(900);
@@ -388,6 +409,7 @@ void home(void)
   stepper_driver.moveAtVelocity(16000);
   while(limit_hit == false)
   {flashLED(2);}
+  stepper_driver.moveAtVelocity(0);
   stepper_driver.enableInverseMotorDirection();
   stepper_driver.moveAtVelocity(240000);
   delay(200);
@@ -400,7 +422,7 @@ void stop()
 {
  limit_hit = true;
 }
-
+/*
 void ledTask(void*){
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -417,12 +439,12 @@ void ledTask(void*){
     }
   }
 }
-
-void flashLED_async(uint32_t flashes) {
-  if (!ledTaskHandle) return;
-  xTaskNotifyGive(ledTaskHandle);               // wake task
-  xTaskNotify(ledTaskHandle, flashes, eSetValueWithOverwrite);
-}
+*/
+//void flashLED_async(uint32_t flashes) {
+ // if (!ledTaskHandle) return;
+ // xTaskNotifyGive(ledTaskHandle);               // wake task
+ // xTaskNotify(ledTaskHandle, flashes, eSetValueWithOverwrite);
+//}
 
 
 const char index_html[] PROGMEM = R"rawliteral(
