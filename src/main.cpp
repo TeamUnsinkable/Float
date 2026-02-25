@@ -16,14 +16,8 @@
 #include "freertos/task.h"
 
 
-
-#define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
-#define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
-#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
-#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
-#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
+// Analog servos run at ~50 Hz updates
 #define maximumReadings 2000
-#define TXD2 17
 bool NewReading = false;
 bool Logging = false;
 int LoggingEnabler = 0;
@@ -40,7 +34,7 @@ unsigned long previousTime = 0;
 const long timeoutTime = 2000; // Define timeout time in milliseconds (example: 2000ms = 2s)
 String header;
 const long gmtOffset_sec = -18000;
-float depthPascal =0;
+float depthPascal = 0;
 float depthMeter = 0;
 int runNum = 0;
 bool diving;
@@ -53,12 +47,14 @@ static int lastSecond = -1;
 int sec;
 bool limit_hit = false;
 int step_pin = 16;
-int step_rate = 30;
-int steps_to_make;
-
-
-unsigned long lastReportMs = 0;
-unsigned long loopCount = 0;
+int UART_RX = 18;
+int UART_TX = 17;
+int dir_pin = 15;
+static const long SERIAL_BAUD = 9600;
+unsigned long pDiveTime = 0;
+unsigned long deltaT_prev;
+int step_pos;
+bool bouncing;
 
 void getTime();
 void flashLED(int times);
@@ -69,6 +65,8 @@ void home();
 void stop();
 //void flashLED_async(uint32_t flashes);
 void defineHTML(void);
+void step(int steps, int step_rate);
+void bounce(void);
 
 
 
@@ -96,13 +94,8 @@ IPAddress subnet(255, 255, 0, 0);
 HardwareSerial & serial_stream = Serial1;
 TMC2209 stepper_driver;
 
-static const long SERIAL_BAUD = 9600;
-static const int  UART_PIN    = 17; 
-
-
 
 //TaskHandle_t ledTaskHandle = nullptr;
-extern const char index_html[] PROGMEM;
 
 void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
@@ -135,12 +128,13 @@ getTime();
 //  if (!WiFi.config(local_IP, gateway, subnet)) {\]
 //  Serial.println("STA Failed to configure");
 //}
+
 pinMode(6, INPUT_PULLDOWN);
 attachInterrupt(digitalPinToInterrupt(6), stop, FALLING);
 pinMode(9, OUTPUT);
 digitalWrite(9, HIGH);
-
 pinMode(LED_BUILTIN, OUTPUT);
+
 psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
         if(psramInit()){
         Serial.println("\nPSRAM is correctly initialized");
@@ -150,18 +144,16 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
 
   // initialize USB serial converter so we have a port created
    Serial.begin(115200);
-   //while (! Serial) delay(10);
-  
-    delay(100);
-    stepper_driver.setup(serial_stream,
+  while (! Serial) delay(10);
+  delay(100);
+  stepper_driver.setup(serial_stream,
                        SERIAL_BAUD,
                        TMC2209::SERIAL_ADDRESS_0,
-                       UART_PIN,   // RX pin (same pin for 1-wire)
-                       UART_PIN);
-    delay(100);
-    
+                       UART_RX,
+                       UART_TX);
+  delay(100);  
 
-    Serial.println("Begin chooch");
+  Serial.println("Begin chooch");
   Wire.begin();
 
   //xTaskCreate(ledTask,"LED",1024,nullptr,1,&ledTaskHandle);
@@ -169,56 +161,38 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
 
   // Initialize pressure sensor
   // We can't continue with the rest of the program unless we can initialize the sensor
-  while (!sensor.init()) {
-    Serial.println("Init failed!");
-    Serial.println("Are SDA/SCL connected correctly?");
-    Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
-    Serial.println("\n\n\n");
-    delay(100);
-    flashLED(4);
-}
-sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
+ // while (!sensor.init()) {
+//    Serial.println("Init failed!");
+ //   Serial.println("Are SDA/SCL connected correctly?");
+  //  Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
+  //  Serial.println("\n\n\n");
+  //  delay(100);
+  //  flashLED(4);
+//}
+//sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
 
 
-stepper_driver.setRunCurrent(100);
-  stepper_driver.enableCoolStep();
-  stepper_driver.enable();
-  stepper_driver.disableStealthChop();
 Serial.println("Chooch has begun");
 //flashLED_async(8);
 //home(); 
 
+pinMode(dir_pin, OUTPUT);
+pinMode(step_pin, OUTPUT);
 
-stepper_driver.enableInverseMotorDirection();
-limit_hit = true;
-  stepper_driver.moveAtVelocity(160000);
-  delay(5000);
-  stepper_driver.moveAtVelocity(0);
-
- limit_hit = false;
-
-
-for (int i = 0; i < steps_to_make; i++) {
-  digitalWrite(step_pin, HIGH);
-  delayMicroseconds(step_rate);
-
-  digitalWrite(step_pin, LOW);
-  delayMicroseconds(step_rate);
-  }
-
+step(1000000, 50);
 }
 
 
  
 
 void loop() {
+
+
+
   //Serial.println("Looped");
   //flashLED_async(1);
-  if (limit_hit == true) {
-    stepper_driver.moveAtVelocity(0);
-    Serial.println("Stepper stopped!");
-    limit_hit = false;
-    }
+
+    
   
   sensor.read();
   depthMeter = sensor.depth();
@@ -234,6 +208,7 @@ void loop() {
   psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
   readingCnt++;
   Serial.println("Grabbed a data");
+
   }
   lastSecond = sec;
 /*
@@ -288,7 +263,7 @@ WiFiClient client = server2.available();   // Listen for incoming clients
             client.println(".sensor { color:white; font-weight: bold; background-color: #bcbcbc; padding: 1px; }");
             client.println("</style></head><body><h1>Da Floaty Boi</h1>");
             for (int r = 0; r < readingCnt; r++){
-            client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  PN05  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
+            client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  EX01  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
         "kPa  " + String(psram_Readings[r].depthM) + " meters</p>");
             }
          
@@ -314,17 +289,14 @@ WiFiClient client = server2.available();   // Listen for incoming clients
     Serial.println("Client disconnected.");
     Serial.println("");
   }
-
+  
 if (diving == true) {
         deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
-        if (JustInCase >= 1000){
+        deltaT_prev = pDiveTime - millis();
+        if ((deltaT_prev >= 60000) || (deltaP < 1000 && deltaT_prev > 11000)){
             diving = false;
             surface();
-
         }
-        JustInCase = JustInCase + 1;
-        Serial.println(JustInCase);
-
     }
 
 }
@@ -363,8 +335,24 @@ void flashLED(int flashes) {
   }
 }
 
+void step(int steps, int step_rate)
+{
+  Serial.println("Ented for loop");
+    for (int i = 0; i < steps; i++) {
+      if (limit_hit == true && bouncing == false) 
+      {bounce(); break;}
+      digitalWrite(step_pin, HIGH);
+      delayMicroseconds(step_rate);
+      digitalWrite(step_pin, LOW);
+      delayMicroseconds(step_rate);
+      step_pos++;
+    }
+  Serial.println("Exited For Loop");
+}
+
 void dive(void) {
   Serial.println("I'ma divin', bitch!");
+  pDiveTime = millis(); 
   limit_hit = false;
   stepper_driver.disableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
   stepper_driver.moveAtVelocity(360000);
@@ -378,8 +366,6 @@ void dive(void) {
 
 void surface(void)
 {
-  bool uabitch = true;
-  if (uabitch == false) {
     Serial.println("I'ma surfacin', bitch!");
   limit_hit = false;
   stepper_driver.enableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
@@ -387,35 +373,27 @@ void surface(void)
   delay(2900);
   stepper_driver.moveAtVelocity(0);
   diving = false;
-  }
-  else {
-    home();
-  }
 }
 
 void home(void)
 {Serial.println("HOMING"); //print action
   limit_hit = false;
-  stepper_driver.disableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
-  stepper_driver.moveAtVelocity(160000);
-  while(limit_hit == false)
-  {flashLED(2);}
-  stepper_driver.moveAtVelocity(0);
-  stepper_driver.enableInverseMotorDirection();
-  stepper_driver.moveAtVelocity(160000);
-  delay(900);
-  stepper_driver.disableInverseMotorDirection();
+  step(-20000, 200);
+}
+
+void bounce(void){
+
+  bouncing = true;
+  limit_hit == false;
+  step(1000, 200);
+  while (limit_hit == false)
+  {
+  step(-1, 400);
+  }
   limit_hit = false;
-  stepper_driver.moveAtVelocity(16000);
-  while(limit_hit == false)
-  {flashLED(2);}
-  stepper_driver.moveAtVelocity(0);
-  stepper_driver.enableInverseMotorDirection();
-  stepper_driver.moveAtVelocity(240000);
-  delay(200);
-  limit_hit = false;
-  delay(9500);
-  stepper_driver.moveAtVelocity(0);
+  step(15000, 200);
+  bouncing = false;
+  
 }
 
 void stop()
