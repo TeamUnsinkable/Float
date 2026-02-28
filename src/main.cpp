@@ -38,7 +38,6 @@ float depthPascal = 0;
 float depthMeter = 0;
 int runNum = 0;
 bool diving;
-bool atBottom = false;
 int JustInCase = 0;
 double pressureValueMax;
 double pressureValueMin;
@@ -65,7 +64,7 @@ void home();
 void stop();
 //void flashLED_async(uint32_t flashes);
 void defineHTML(void);
-void step(int steps, int step_rate);
+void step(int steps, int step_delay);
 void bounce(void);
 
 
@@ -178,8 +177,7 @@ Serial.println("Chooch has begun");
 
 pinMode(dir_pin, OUTPUT);
 pinMode(step_pin, OUTPUT);
-
-step(1000000, 50);
+digitalWrite(dir_pin, LOW);
 }
 
 
@@ -335,30 +333,41 @@ void flashLED(int flashes) {
   }
 }
 
-void step(int steps, int step_rate)
+void step(int steps, int step_delay)
 {
-  Serial.println("Ented for loop");
+  if (steps < 0) {
     for (int i = 0; i < steps; i++) {
-      if (limit_hit == true && bouncing == false) 
-      {bounce(); break;}
-      digitalWrite(step_pin, HIGH);
-      delayMicroseconds(step_rate);
-      digitalWrite(step_pin, LOW);
-      delayMicroseconds(step_rate);
-      step_pos++;
+        digitalWrite(dir_pin, LOW);
+        if (limit_hit == true && bouncing == false) 
+        {bounce(); break;}
+        digitalWrite(step_pin, HIGH);
+        delayMicroseconds(step_delay);
+        digitalWrite(step_pin, LOW);
+        delayMicroseconds(step_delay);
+        step_pos--;
+      }}
+  else if (steps > 0) {
+    for (int i = 0; i < steps; i++) {
+       digitalWrite(dir_pin, HIGH);
+       if (limit_hit == true && bouncing == false) 
+       {bounce(); break;}
+       digitalWrite(step_pin, HIGH);
+       delayMicroseconds(step_delay);
+       digitalWrite(step_pin, LOW);
+       delayMicroseconds(step_delay);
+       step_pos++;
+      }
     }
-  Serial.println("Exited For Loop");
+    else {
+      Serial.println("Fuck, called steps count no chooch");
+    }
 }
 
 void dive(void) {
   Serial.println("I'ma divin', bitch!");
   pDiveTime = millis(); 
   limit_hit = false;
-  stepper_driver.disableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
-  stepper_driver.moveAtVelocity(360000);
-  delay(3000);
-  stepper_driver.moveAtVelocity(0);
-  atBottom = false;
+  step(2000,50);  // Flip this line and the other inverse line of homing is in wrong direction.
   JustInCase = 0;
   diving = true; 
   runNum++;   
@@ -368,11 +377,11 @@ void surface(void)
 {
     Serial.println("I'ma surfacin', bitch!");
   limit_hit = false;
-  stepper_driver.enableInverseMotorDirection();  // Flip this line and the other inverse line of homing is in wrong direction.
-  stepper_driver.moveAtVelocity(360000);
+  step(2000,50);
   delay(2900);
   stepper_driver.moveAtVelocity(0);
   diving = false;
+  
 }
 
 void home(void)
