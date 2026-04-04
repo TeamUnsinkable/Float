@@ -14,10 +14,19 @@
 #include <TMC2209.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
+#include <Adafruit_ST7789.h> 
+#include <Fonts/FreeSans9pt7b.h>
+#include <Adafruit_GFX.h>
+#include <Fonts/FreeSans12pt7b.h>
+#include <Adafruit_Sensor.h>
+#include <stdio.h>
+#include <string>
 
 // Analog servos run at ~50 Hz updates
 #define maximumReadings 2000
+#define D0 0 // button D0 on feather board
+#define D1 1 // button D1 on feather board
+#define D2 2 // button D2 on feather board
 bool NewReading = false;
 bool Logging = false;
 int LoggingEnabler = 0;
@@ -46,14 +55,17 @@ static int lastSecond = -1;
 int sec;
 bool limit_hit = false;
 int step_pin = 16;
-int UART_RX = 18;
-int UART_TX = 17;
+int UART_RX = 17;
+int UART_TX = 18;
 int dir_pin = 15;
 static const long SERIAL_BAUD = 9600;
 unsigned long pDiveTime = 0;
 unsigned long deltaT_prev;
 int step_pos;
 bool bouncing;
+const uint8_t RUN_CURRENT_PERCENT = 100;
+float lastDiveCall = millis();
+
 
 void getTime();
 void flashLED(int times);
@@ -91,8 +103,10 @@ IPAddress local_IP(192, 168, 165, 183);
 IPAddress gateway(192, 168, 165, 1);
 IPAddress subnet(255, 255, 0, 0);
 HardwareSerial & serial_stream = Serial1;
-TMC2209 stepper_driver;
 
+TMC2209 stepper_driver;
+Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+GFXcanvas16 canvas(240, 135);
 
 //TaskHandle_t ledTaskHandle = nullptr;
 
@@ -105,25 +119,19 @@ WiFiServer server2(8080);
 
 /// pin 16 and 17 are for endstops
 void setup() {
-
+Serial.println("Begin chooch");
 getTime();
-   // Send web page to client
-  server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index_html);
-  });
 
-  // Receive an HTTP GET request
-  server1.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    dive();
-    request->send(200, "text/plain", "ok");
-  });
+ pinMode(TFT_I2C_POWER, OUTPUT);
+ digitalWrite(TFT_I2C_POWER, HIGH);
 
-  // Receive an HTTP GET request
-  server1.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "ok");
-  });
   
-  server1.onNotFound(notFound);
+ display.init(135, 240);           // Init ST7789 240x135
+ display.setRotation(3);
+ canvas.setFont(&FreeSans9pt7b);
+ canvas.setTextColor(ST77XX_WHITE);
+
+
 //  if (!WiFi.config(local_IP, gateway, subnet)) {\]
 //  Serial.println("STA Failed to configure");
 //}
@@ -143,21 +151,36 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
 
   // initialize USB serial converter so we have a port created
    Serial.begin(115200);
-  while (! Serial) delay(10);
+  //while (! Serial) delay(10);
   delay(100);
-  stepper_driver.setup(serial_stream,
-                       SERIAL_BAUD,
-                       TMC2209::SERIAL_ADDRESS_0,
-                       UART_RX,
-                       UART_TX);
+  stepper_driver.setup(serial_stream);
   delay(100);  
 
-  Serial.println("Begin chooch");
+  
   Wire.begin();
 
   //xTaskCreate(ledTask,"LED",1024,nullptr,1,&ledTaskHandle);
   sensor.setModel(MS5837::MS5837_02BA);
 
+
+     // Send web page to client
+  server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html);
+  });
+
+  // Receive an HTTP GET request
+  server1.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    dive();   
+    request->send(200, "text/plain", "ok");
+  });
+
+  // Receive an HTTP GET request
+  server1.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "ok");
+  });
+  
+  server1.onNotFound(notFound);
+  
   // Initialize pressure sensor
   // We can't continue with the rest of the program unless we can initialize the sensor
  // while (!sensor.init()) {
@@ -170,28 +193,44 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
 //}
 //sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
 
+canvas.fillScreen(ST77XX_BLACK);
+canvas.setCursor(0, 25);
+canvas.setFont(&FreeSans9pt7b);
+canvas.print("SHE'S ALIVEEEEEEEEE");
+display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
 
 Serial.println("Chooch has begun");
 //flashLED_async(8);
-//home(); 
-
+stepper_driver.setRunCurrent(RUN_CURRENT_PERCENT);
+stepper_driver.enableCoolStep();
+stepper_driver.enable();
+stepper_driver.disable();
 pinMode(dir_pin, OUTPUT);
 pinMode(step_pin, OUTPUT);
 digitalWrite(dir_pin, LOW);
+
+home();
+//stepper_driver.enableInverseMotorDirection();
+//stepper_driver.moveAtVelocity(2000);
+//delay(5000);
+//stepper_driver.moveAtVelocity(0);
+
+
 }
 
 
  
 
 void loop() {
-
-
-
   //Serial.println("Looped");
   //flashLED_async(1);
-
-    
   
+
+  //stepper_driver.moveAtVelocity(2000);
+  //delay(5000);
+  //stepper_driver.moveAtVelocity(0);
+
+
   sensor.read();
   depthMeter = sensor.depth();
   depthPascal = sensor.pressure();
@@ -290,10 +329,14 @@ WiFiClient client = server2.available();   // Listen for incoming clients
   
 if (diving == true) {
         deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
-        deltaT_prev = pDiveTime - millis();
-        if ((deltaT_prev >= 60000) || (deltaP < 1000 && deltaT_prev > 11000)){
-            diving = false;
-            surface();
+        deltaT_prev = millis() - pDiveTime;
+       // if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
+       //     diving = false;
+       //     surface();
+        //}
+         if (deltaT_prev >= 30000) {
+          diving = false;
+          surface();
         }
     }
 
@@ -335,8 +378,9 @@ void flashLED(int flashes) {
 
 void step(int steps, int step_delay)
 {
+  Serial.println("step function called");
   if (steps < 0) {
-    for (int i = 0; i < steps; i++) {
+    for (int i = 0; i < abs(steps); i++) {
         digitalWrite(dir_pin, LOW);
         if (limit_hit == true && bouncing == false) 
         {bounce(); break;}
@@ -364,50 +408,51 @@ void step(int steps, int step_delay)
 }
 
 void dive(void) {
+  if (diving == false)
+  {
+  diving = true;
   Serial.println("I'ma divin', bitch!");
   pDiveTime = millis(); 
   limit_hit = false;
-  step(2000,50);  // Flip this line and the other inverse line of homing is in wrong direction.
-  JustInCase = 0;
-  diving = true; 
-  runNum++;   
+  step(-20000,100);  // Flip this line and the other inverse line of homing is in wrong direction.
+  JustInCase = millis();
+  runNum++;  
+  } 
 }
 
 void surface(void)
 {
     Serial.println("I'ma surfacin', bitch!");
   limit_hit = false;
-  step(2000,50);
-  delay(2900);
-  stepper_driver.moveAtVelocity(0);
+  step(48000,100);
   diving = false;
   
 }
 
-void home(void)
-{Serial.println("HOMING"); //print action
+void home(void){
+  Serial.println("HOMING"); //print action
   limit_hit = false;
-  step(-20000, 200);
+  step(-800000, 200);
 }
 
 void bounce(void){
-
+  Serial.println("Bouncing");
   bouncing = true;
-  limit_hit == false;
+  limit_hit = false;
   step(1000, 200);
   while (limit_hit == false)
   {
   step(-1, 400);
   }
   limit_hit = false;
-  step(15000, 200);
+  step(25000, 100); // 1000 steps is ~2ml
   bouncing = false;
-  
 }
 
 void stop()
 {
  limit_hit = true;
+ Serial.println("Stop received");
 }
 /*
 void ledTask(void*){
