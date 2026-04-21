@@ -9,6 +9,7 @@ getTime();
  pinMode(TFT_I2C_POWER, OUTPUT);
  digitalWrite(TFT_I2C_POWER, HIGH);
 
+
   
  display.init(135, 240);           // Init ST7789 240x135
  display.setRotation(3);
@@ -33,11 +34,14 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
         Serial.println("PSRAM not available");
         }
 
-  // initialize USB serial converter so we have a port created
    Serial.begin(115200);
   //while (! Serial) delay(10);
-  delay(100);
-  stepper_driver.setup(serial_stream);
+  delay(100); // do not remove
+  stepper_driver.setup(serial_stream,
+                     SERIAL_BAUD,
+                     TMC2209::SERIAL_ADDRESS_0,
+                     UART_TX,
+                     UART_RX);
   delay(100);  
 
   
@@ -67,16 +71,16 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
   
   // Initialize pressure sensor
   // We can't continue with the rest of the program unless we can initialize the sensor
- // while (!sensor.init()) {
-//    Serial.println("Init failed!");
- //   Serial.println("Are SDA/SCL connected correctly?");
-  //  Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
-  //  Serial.println("\n\n\n");
-  //  delay(100);
-  //  flashLED(4);
-//}
-//sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
-
+  while (!sensor.init()) {
+    Serial.println("Init failed!");
+    Serial.println("Are SDA/SCL connected correctly?");
+    Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
+    Serial.println("\n\n\n");
+    delay(100);
+    flashLED(4);
+  }
+sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
+//xTaskCreate(sensorTask,"SensorTask",2048,nullptr,2,&sensorTaskHandle);
 canvas.fillScreen(ST77XX_BLACK);
 canvas.setCursor(0, 25);
 canvas.setFont(&FreeSans9pt7b);
@@ -88,17 +92,15 @@ Serial.println("Chooch has begun");
 stepper_driver.setRunCurrent(RUN_CURRENT_PERCENT);
 stepper_driver.enableCoolStep();
 stepper_driver.enable();
-stepper_driver.disable();
+
 pinMode(dir_pin, OUTPUT);
 pinMode(step_pin, OUTPUT);
 digitalWrite(dir_pin, LOW);
+step_pos = 25000;
 
+
+if (digitalRead(6) == 0) {step(-50,75); step(50,75); step(-50,75); step(12000,100);}
 home();
-//stepper_driver.enableInverseMotorDirection();
-//stepper_driver.moveAtVelocity(2000);
-//delay(5000);
-//stepper_driver.moveAtVelocity(0);
-
 
 }
 
@@ -108,12 +110,6 @@ home();
 void loop() {
   //Serial.println("Looped");
   //flashLED_async(1);
-  
-
-  //stepper_driver.moveAtVelocity(2000);
-  //delay(5000);
-  //stepper_driver.moveAtVelocity(0);
-
 
   sensor.read();
   depthMeter = sensor.depth();
@@ -146,14 +142,14 @@ void loop() {
   Serial.println("Lost wifi");
  }
 
-
+//Serial.println(readings);
 handleWebserver();
 
   
 if (diving == true) {
         deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
         deltaT_prev = millis() - pDiveTime;
-       // if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
+        if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
        //     diving = false;
        //     surface();
         //}
@@ -163,15 +159,16 @@ if (diving == true) {
         }
     }
 }
-
+}
 
 void getTime(void){
   setCpuFrequencyMhz(240);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    flashLED(1);
+    flashLED(2);
     Serial.println("No wifi");
+    delay(400);
   }
   while (Ping.ping("www.google.com") == false) {
     flashLED(3);
@@ -200,29 +197,37 @@ void flashLED(int flashes) {
 
 void step(int steps, int step_delay)
 {
-  Serial.println("step function called");
   if (steps < 0) {
     for (int i = 0; i < abs(steps); i++) {
+      if (step_pos < step_pos_max && step_pos > step_pos_min) {
         digitalWrite(dir_pin, LOW);
         if (limit_hit == true && bouncing == false) 
         {bounce(); break;}
         digitalWrite(step_pin, HIGH);
-        delayMicroseconds(step_delay);
+        delay(step_delay/1000);
         digitalWrite(step_pin, LOW);
-        delayMicroseconds(step_delay);
+        delay(step_delay/1000);
         step_pos--;
-      }}
+        Serial.println(step_pos);
+      }
+      else {Serial.println("Axis limit hit.");}
+    }}
   else if (steps > 0) {
     for (int i = 0; i < steps; i++) {
+      if (step_pos < step_pos_max && step_pos > step_pos_min) {
        digitalWrite(dir_pin, HIGH);
        if (limit_hit == true && bouncing == false) 
        {bounce(); break;}
        digitalWrite(step_pin, HIGH);
-       delayMicroseconds(step_delay);
+       delay(step_delay/1000);
        digitalWrite(step_pin, LOW);
-       delayMicroseconds(step_delay);
+       delay(step_delay/1000);
        step_pos++;
+       Serial.println(step_pos);
       }
+      else {Serial.println("Axis limit hit.");}
+    }
+
     }
     else {
       Serial.println("Fuck, called steps count no chooch");
@@ -236,7 +241,7 @@ void dive(void) {
   Serial.println("I'ma divin', bitch!");
   pDiveTime = millis(); 
   limit_hit = false;
-  step(-22000,100);  // Flip this line and the other inverse line of homing is in wrong direction.
+  step(-52000,100);  // Flip this line and the other inverse line of homing is in wrong direction.
   JustInCase = millis();
   runNum++;  
   } 
@@ -246,15 +251,16 @@ void surface(void)
 {
     Serial.println("I'ma surfacin', bitch!");
   limit_hit = false;
-  step(51000,100);
+  step(52000,100);
   diving = false;
   
 }
 
 void home(void){
   Serial.println("HOMING"); //print action
+  step_pos = 53999;
   limit_hit = false;
-  step(-800000, 200);
+  step(-53999, 150);
 }
 
 void bounce(void){
@@ -267,14 +273,31 @@ void bounce(void){
   step(-1, 400);
   }
   limit_hit = false;
-  step(25000, 100); // 1000 steps is ~2ml
+  step_pos = 0;
+  step(54000, 100);
+  step_pos = 54000; // 1000 steps is ~2ml
   bouncing = false;
 }
 
 void stop()
 {
  limit_hit = true;
+ step_pos = 1001;
  Serial.println("Stop received");
+}
+
+
+void sensorTask(void *pvParameters) {
+  const TickType_t period = pdMS_TO_TICKS(100);
+  TickType_t lastWakeTime = xTaskGetTickCount();
+
+  for (;;) {
+    sensor.read();
+    depthMeter = sensor.depth();
+    depthPascal = sensor.pressure();
+    readings++;
+    vTaskDelayUntil(&lastWakeTime, period);
+  }
 }
 /*
 void ledTask(void*){

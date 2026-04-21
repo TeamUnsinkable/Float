@@ -55,16 +55,19 @@ static int lastSecond = -1;
 int sec;
 bool limit_hit = false;
 int step_pin = 16;
-int UART_RX = 17;
-int UART_TX = 18;
+int UART_RX = 18;
+int UART_TX = 17;
 int dir_pin = 15;
 static const long SERIAL_BAUD = 9600;
 unsigned long pDiveTime = 0;
 unsigned long deltaT_prev;
-int step_pos;
+int step_pos = 0;
 bool bouncing;
 const uint8_t RUN_CURRENT_PERCENT = 100;
 float lastDiveCall = millis();
+int step_pos_max = 54000;
+int step_pos_min = 0;
+int readings;
 
 
 void getTime();
@@ -79,6 +82,7 @@ void defineHTML(void);
 void step(int steps, int step_delay);
 void bounce(void);
 void handleWebserver(void);
+void sensorTask(void *pvParameters);
 
 
 
@@ -109,7 +113,7 @@ TMC2209 stepper_driver;
 Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 GFXcanvas16 canvas(240, 135);
 
-//TaskHandle_t ledTaskHandle = nullptr;
+TaskHandle_t sensorTaskHandle = nullptr;
 
 void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
