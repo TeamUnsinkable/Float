@@ -72,6 +72,7 @@ int step_pos_min = 0;
 int readings;
 int endstop_pin = 6;
 bool movement_requested = false;
+bool home_status = false;
 
 
 void getTime();

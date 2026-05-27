@@ -62,7 +62,13 @@ void setup() {
   stepper.setSpeedInStepsPerSecond(5000);
   stepper.setAccelerationInStepsPerSecondPerSecond(10000);
   stepper.setDecelerationInStepsPerSecondPerSecond(10000);
-  stepper.moveToHomeInSteps(-1, 1000, step_pos_max*1.2, endstop_pin);
+  Serial.println("Attempting to home...");
+  home_status = stepper.moveToHomeInSteps(-1, 1000, step_pos_max*1.2, endstop_pin);
+  if (home_status == true) {
+    Serial.println("Homing successful");
+  } else {
+    Serial.println("Homing failed");
+  }
 
   // Initialize pressure sensor
   // We can't continue with the rest of the program unless we can initialize the sensor
@@ -94,7 +100,7 @@ void setup() {
  
 
 void loop() {
-  //Serial.println("Looped");
+  Serial.println("Home status: " + String(home_status));
   //flashLED_async(1);
   flashLED(1);
   sensor.read();
