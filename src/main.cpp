@@ -3,12 +3,11 @@
 
 /// pin 16 and 17 are for endstops
 void setup() {
-Serial.println("Begin chooch");
-getTime();
+  Serial.println("Begin chooch");
+  getTime();
 
  pinMode(TFT_I2C_POWER, OUTPUT);
  digitalWrite(TFT_I2C_POWER, HIGH);
-
 
 
  display.init(135, 240);           // Init ST7789 240x135
@@ -16,24 +15,19 @@ getTime();
  canvas.setFont(&FreeSans9pt7b);
  canvas.setTextColor(ST77XX_WHITE);
 
+  pinMode(6, INPUT_PULLUP);
+  pinMode(9, OUTPUT);
+  digitalWrite(9, LOW);
+  pinMode(LED_BUILTIN, OUTPUT);
 
-//  if (!WiFi.config(local_IP, gateway, subnet)) {\]
-//  Serial.println("STA Failed to configure");
-//}
-
-
-pinMode(9, OUTPUT);
-digitalWrite(9, LOW);
-pinMode(LED_BUILTIN, OUTPUT);
-
-psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
+  psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
         if(psramInit()){
         Serial.println("\nPSRAM is correctly initialized");
         }else{
         Serial.println("PSRAM not available");
         }
 
-   Serial.begin(115200);
+  Serial.begin(115200);
   //while (! Serial) delay(10);
   delay(100); // do not remove
   stepper_driver.setup(serial_stream,
@@ -42,15 +36,12 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
                      UART_TX,
                      UART_RX);
   delay(100);  
-
-  
   Wire.begin();
 
   //xTaskCreate(ledTask,"LED",1024,nullptr,1,&ledTaskHandle);
   sensor.setModel(MS5837::MS5837_02BA);
 
-
-     // Send web page to client
+  // Send web page to client
   server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html);
   });
@@ -71,6 +62,8 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
   stepper.setSpeedInStepsPerSecond(5000);
   stepper.setAccelerationInStepsPerSecondPerSecond(10000);
   stepper.setDecelerationInStepsPerSecondPerSecond(10000);
+  stepper.moveToHomeInSteps(-1, 1000, step_pos_max*1.2, endstop_pin);
+
   // Initialize pressure sensor
   // We can't continue with the rest of the program unless we can initialize the sensor
   while (!sensor.init()) {
@@ -81,27 +74,23 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
     delay(100);
     flashLED(4);
   }
-sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
-//xTaskCreate(sensorTask,"SensorTask",2048,nullptr,2,&sensorTaskHandle);
-canvas.fillScreen(ST77XX_BLACK);
-canvas.setCursor(0, 25);
-canvas.setFont(&FreeSans9pt7b);
-canvas.print("SHE'S ALIVEEEEEEEEE");
-display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+  sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
+  //xTaskCreate(sensorTask,"SensorTask",2048,nullptr,2,&sensorTaskHandle);
+  canvas.fillScreen(ST77XX_BLACK);
+  canvas.setCursor(0, 25);
+  canvas.setFont(&FreeSans9pt7b);
+  canvas.print("SHE'S ALIVEEEEEEEEE");
+  display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
 
-Serial.println("Chooch has begun");
-//flashLED_async(8);
-//stepper_driver.setRunCurrent(RUN_CURRENT_PERCENT);
-//stepper_driver.enableCoolStep();
-//stepper_driver.enable();
+  Serial.println("Chooch has begun");
+  //flashLED_async(8);
+  //stepper_driver.setRunCurrent(RUN_CURRENT_PERCENT);
+  //stepper_driver.enableCoolStep();
+  //stepper_driver.enable();
 
-movement_requested = false;
-stepper.startAsService(0);
-
-
-}
-
-
+  movement_requested = false;
+  stepper.startAsService(0);
+} // end of setup()
  
 
 void loop() {
