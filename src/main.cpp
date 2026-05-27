@@ -1,5 +1,5 @@
 #include <main.hpp>
-
+#include <ESPmDNS.h>
 
 /// pin 16 and 17 are for endstops
 void setup() {
@@ -59,6 +59,8 @@ void setup() {
   home_status = stepper.moveToHomeInSteps(-1, 1000, step_pos_max*1.2, endstop_pin);
   if (home_status == true) {
     Serial.println("Homing successful");
+    // stepper.setCurrentPositionInSteps(step_pos_max - 251);
+    stepper.setTargetPositionRelativeInSteps(-step_pos_max + 251);
   } else {
     Serial.println("Homing failed");
   }
@@ -84,6 +86,7 @@ void setup() {
   Serial.println("Chooch has begun");
   //flashLED_async(8);
 
+  // When used with moveRelativeInStep will cause race condition
   stepper.startAsService(0);
 
   // Configure bang bang controller
@@ -144,15 +147,42 @@ void loop() {
     }
     deltaT_prev = millis() - pDiveTime;
 
+    // Benchtop validation of bang-bang controller
+    // if (millis() - pDiveTime >= 1000*90 ){
+    //   control_setpoint = 0.0;
+    // } 
+
     // Compute delta and step
     filterInput(depthMeter);
     BangBangBoi.run();
-    control_output *= -1.0; // Invert control output because of motor orientation
-    stepper.setTargetPositionRelativeInSteps(control_output);
+    // Benchtop validation
+    // control_output *= -1.0; // Invert control output because of motor orientation
+    limitCheck(control_output);
     Serial.println("Control output: " + String(control_output));
-    Serial.println("Setpoint input: " + String(depthMeter));
+    Serial.println("Plant state: " + String(depthMeter));
+    Serial.println("Setpoint state: " + String(control_setpoint));
     delay(100);
   }
+}
+
+void limitCheck(double relativeMove){
+  long currentPosition = -stepper.getCurrentPositionInSteps();
+  Serial.println("Current position: " + String(currentPosition));
+  Serial.println("End Stop: " + String(digitalRead(endstop_pin)));
+  if (currentPosition >= step_pos_max || digitalRead(endstop_pin) == HIGH) {
+    Serial.println("Limit hit!");
+  } else if (currentPosition + relativeMove > step_pos_max) {
+    stepper.setTargetPositionRelativeInSteps(step_pos_max - currentPosition - currentPosition);
+    Serial.println("Running to upper limit!");
+    return;
+  } else if (currentPosition + relativeMove < step_pos_min) {
+    stepper.setTargetPositionRelativeInSteps(step_pos_min - currentPosition - currentPosition);
+    Serial.println("Running to lower limit!");
+    return;
+  } else {
+    stepper.setTargetPositionRelativeInSteps(relativeMove);
+  }
+
 }
 
 void filterInput(double depthValue){
@@ -171,6 +201,7 @@ void getTime(void){
   setCpuFrequencyMhz(240);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("float-esp32");
+  MDNS.begin("float-esp32");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     flashLED(2);

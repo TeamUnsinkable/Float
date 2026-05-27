@@ -92,6 +92,8 @@ void step(int steps, int step_delay);
 void bounce(void);
 void handleWebserver(void);
 void filterInput(double depthValue);
+void limitCheck(double relativeMove);
+
 
 typedef struct {
     int runNumber;
