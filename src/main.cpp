@@ -85,6 +85,13 @@ void setup() {
   //flashLED_async(8);
 
   stepper.startAsService(0);
+
+  // Configure bang bang controller
+  outputMin = -250.0;
+  outputMax = 250.0;
+
+  control_setpoint = 0.45;
+  BangBangBoi.setBangBang(0.005);
 } // end of setup()
  
 
@@ -126,15 +133,23 @@ void loop() {
 
   Serial.println("Reached diving statement");
   if (diving == true) {
-    Serial.print("Entered diving if statement");
+    Serial.println("Entered diving if statement");
     deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
     deltaT_prev = millis() - pDiveTime;
+
+    // Compute delta and step
+    BangBangBoi.run();
+    // control_output *= -1.0; // Invert control output because of motor orientation
+    stepper.moveRelativeInSteps(control_output);
+    Serial.println("Control output: " + String(control_output));
+    Serial.println("Setpoint input: " + String(depthMeter));
   }
 }
 
 void getTime(void){
   setCpuFrequencyMhz(240);
   WiFi.mode(WIFI_STA);
+  WiFi.setHostname("float-esp32");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     flashLED(2);

@@ -22,7 +22,7 @@
 #include <stdio.h>
 #include <string>
 #include <ESP_FlexyStepper.h>
-
+#include <AutoPID.h>
 
 // Analog servos run at ~50 Hz updates
 #define maximumReadings 2000
@@ -45,8 +45,8 @@ unsigned long previousTime = 0;
 const long timeoutTime = 2000; // Define timeout time in milliseconds (example: 2000ms = 2s)
 String header;
 const long gmtOffset_sec = -18000;
-float depthPascal = 0;
-float depthMeter = 0;
+float depthPascal = 0.0;
+double depthMeter = 0.0;
 int runNum = 0;
 bool diving;
 int JustInCase = 0;
@@ -73,6 +73,10 @@ int readings;
 int endstop_pin = 6;
 bool home_status = false;
 
+// Bang-bang control variables
+double control_setpoint, control_output, outputMin, outputMax = 0.0;
+AutoPID BangBangBoi(&depthMeter, &control_setpoint, &control_output, 
+  outputMin, outputMax, 0.0, 0.0, 0.0);
 
 void getTime();
 void flashLED(int times);
