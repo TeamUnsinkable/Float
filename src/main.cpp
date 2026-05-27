@@ -10,7 +10,7 @@ getTime();
  digitalWrite(TFT_I2C_POWER, HIGH);
 
 
-  
+
  display.init(135, 240);           // Init ST7789 240x135
  display.setRotation(3);
  canvas.setFont(&FreeSans9pt7b);
@@ -21,10 +21,9 @@ getTime();
 //  Serial.println("STA Failed to configure");
 //}
 
-pinMode(6, INPUT_PULLDOWN);
-attachInterrupt(digitalPinToInterrupt(6), stop, FALLING);
+
 pinMode(9, OUTPUT);
-digitalWrite(9, HIGH);
+digitalWrite(9, LOW);
 pinMode(LED_BUILTIN, OUTPUT);
 
 psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
@@ -68,7 +67,10 @@ psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings));
   });
   
   server1.onNotFound(notFound);
-  
+  stepper.connectToPins(step_pin, dir_pin);
+  stepper.setSpeedInStepsPerSecond(5000);
+  stepper.setAccelerationInStepsPerSecondPerSecond(10000);
+  stepper.setDecelerationInStepsPerSecondPerSecond(10000);
   // Initialize pressure sensor
   // We can't continue with the rest of the program unless we can initialize the sensor
   while (!sensor.init()) {
@@ -89,18 +91,13 @@ display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
 
 Serial.println("Chooch has begun");
 //flashLED_async(8);
-stepper_driver.setRunCurrent(RUN_CURRENT_PERCENT);
-stepper_driver.enableCoolStep();
-stepper_driver.enable();
+//stepper_driver.setRunCurrent(RUN_CURRENT_PERCENT);
+//stepper_driver.enableCoolStep();
+//stepper_driver.enable();
 
-pinMode(dir_pin, OUTPUT);
-pinMode(step_pin, OUTPUT);
-digitalWrite(dir_pin, LOW);
-step_pos = 25000;
+movement_requested = false;
+stepper.startAsService(0);
 
-
-if (digitalRead(6) == 0) {step(-50,75); step(50,75); step(-50,75); step(12000,100);}
-home();
 
 }
 
@@ -110,7 +107,7 @@ home();
 void loop() {
   //Serial.println("Looped");
   //flashLED_async(1);
-
+  flashLED(1);
   sensor.read();
   depthMeter = sensor.depth();
   depthPascal = sensor.pressure();
@@ -125,7 +122,14 @@ void loop() {
   psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
   readingCnt++;
   Serial.println("Grabbed a data");
+  }
 
+  if (movement_requested == false)  {
+    Serial.println("Opened movement statement");
+    diving = true;
+    stepper.setTargetPositionRelativeInSteps(53000);
+    movement_requested = true;
+    pDiveTime = millis();
   }
   lastSecond = sec;
 /*
@@ -145,21 +149,28 @@ void loop() {
 //Serial.println(readings);
 handleWebserver();
 
-  
+//if (!stepper.isStartedAsService()) {
+//  Serial.println("FUCK");
+//}
+
+Serial.println("Reached diving statement");
 if (diving == true) {
+        Serial.print("Entered diving if statement");
         deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
         deltaT_prev = millis() - pDiveTime;
-        if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
+        Serial.println(deltaT_prev);
+        //if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
        //     diving = false;
-       //     surface();
+           // stepper.setTargetPositionRelativeInSteps(-53000);
         //}
          if (deltaT_prev >= 30000) {
+          stepper.setTargetPositionRelativeInSteps(-53000);
           diving = false;
-          surface();
+          
         }
     }
 }
-}
+
 
 void getTime(void){
   setCpuFrequencyMhz(240);
@@ -195,134 +206,18 @@ void flashLED(int flashes) {
   }
 }
 
-void step(int steps, int step_delay)
-{
-  if (steps < 0) {
-    for (int i = 0; i < abs(steps); i++) {
-      if (step_pos < step_pos_max && step_pos > step_pos_min) {
-        digitalWrite(dir_pin, LOW);
-        if (limit_hit == true && bouncing == false) 
-        {bounce(); break;}
-        digitalWrite(step_pin, HIGH);
-        delay(step_delay/1000);
-        digitalWrite(step_pin, LOW);
-        delay(step_delay/1000);
-        step_pos--;
-        Serial.println(step_pos);
-      }
-      else {Serial.println("Axis limit hit.");}
-    }}
-  else if (steps > 0) {
-    for (int i = 0; i < steps; i++) {
-      if (step_pos < step_pos_max && step_pos > step_pos_min) {
-       digitalWrite(dir_pin, HIGH);
-       if (limit_hit == true && bouncing == false) 
-       {bounce(); break;}
-       digitalWrite(step_pin, HIGH);
-       delay(step_delay/1000);
-       digitalWrite(step_pin, LOW);
-       delay(step_delay/1000);
-       step_pos++;
-       Serial.println(step_pos);
-      }
-      else {Serial.println("Axis limit hit.");}
-    }
-
-    }
-    else {
-      Serial.println("Fuck, called steps count no chooch");
-    }
-}
-
 void dive(void) {
   if (diving == false)
   {
   diving = true;
+
   Serial.println("I'ma divin', bitch!");
   pDiveTime = millis(); 
   limit_hit = false;
-  step(-52000,100);  // Flip this line and the other inverse line of homing is in wrong direction.
   JustInCase = millis();
   runNum++;  
   } 
 }
-
-void surface(void)
-{
-    Serial.println("I'ma surfacin', bitch!");
-  limit_hit = false;
-  step(52000,100);
-  diving = false;
-  
-}
-
-void home(void){
-  Serial.println("HOMING"); //print action
-  step_pos = 53999;
-  limit_hit = false;
-  step(-53999, 150);
-}
-
-void bounce(void){
-  Serial.println("Bouncing");
-  bouncing = true;
-  limit_hit = false;
-  step(1000, 200);
-  while (limit_hit == false)
-  {
-  step(-1, 400);
-  }
-  limit_hit = false;
-  step_pos = 0;
-  step(54000, 100);
-  step_pos = 54000; // 1000 steps is ~2ml
-  bouncing = false;
-}
-
-void stop()
-{
- limit_hit = true;
- step_pos = 1001;
- Serial.println("Stop received");
-}
-
-
-void sensorTask(void *pvParameters) {
-  const TickType_t period = pdMS_TO_TICKS(100);
-  TickType_t lastWakeTime = xTaskGetTickCount();
-
-  for (;;) {
-    sensor.read();
-    depthMeter = sensor.depth();
-    depthPascal = sensor.pressure();
-    readings++;
-    vTaskDelayUntil(&lastWakeTime, period);
-  }
-}
-/*
-void ledTask(void*){
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  for (;;) {
-    // Wait for a flash request (number of flashes passed as value)
-    uint32_t flashes = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-    for (uint32_t i = 0; i < flashes; ++i) {
-      digitalWrite(LED_BUILTIN, HIGH);
-      vTaskDelay(pdMS_TO_TICKS(10));
-
-      digitalWrite(LED_BUILTIN, LOW);
-      vTaskDelay(pdMS_TO_TICKS(5));
-    }
-  }
-}
-*/
-//void flashLED_async(uint32_t flashes) {
- // if (!ledTaskHandle) return;
- // xTaskNotifyGive(ledTaskHandle);               // wake task
- // xTaskNotify(ledTaskHandle, flashes, eSetValueWithOverwrite);
-//}
-
 
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>

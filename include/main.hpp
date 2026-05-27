@@ -21,6 +21,8 @@
 #include <Adafruit_Sensor.h>
 #include <stdio.h>
 #include <string>
+#include <ESP_FlexyStepper.h>
+
 
 // Analog servos run at ~50 Hz updates
 #define maximumReadings 2000
@@ -68,6 +70,8 @@ float lastDiveCall = millis();
 int step_pos_max = 54000;
 int step_pos_min = 0;
 int readings;
+int endstop_pin = 6;
+bool movement_requested = false;
 
 
 void getTime();
@@ -82,8 +86,6 @@ void defineHTML(void);
 void step(int steps, int step_delay);
 void bounce(void);
 void handleWebserver(void);
-void sensorTask(void *pvParameters);
-
 
 
 typedef struct {
@@ -101,8 +103,6 @@ MS5837 sensor;
 
 extern const char index_html[] PROGMEM;
 
-
-//WiFiServer server(80);
 ESP32Time rtc(0);
 IPAddress local_IP(192, 168, 165, 183);
 IPAddress gateway(192, 168, 165, 1);
@@ -112,8 +112,7 @@ HardwareSerial & serial_stream = Serial1;
 TMC2209 stepper_driver;
 Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 GFXcanvas16 canvas(240, 135);
-
-TaskHandle_t sensorTaskHandle = nullptr;
+ESP_FlexyStepper stepper;
 
 void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
