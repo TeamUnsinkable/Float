@@ -89,6 +89,7 @@ void setup() {
   // Configure bang bang controller
   outputMin = -250.0;
   outputMax = 250.0;
+  BangBangBoi.setOutputRange(outputMin, outputMax);
 
   control_setpoint = 0.45;
   BangBangBoi.setBangBang(0.005);
@@ -130,19 +131,39 @@ void loop() {
 
   //Serial.println(readings);
   handleWebserver();
+  // stepper.moveRelativeInSteps(-250);
+  // delay(100);
 
   Serial.println("Reached diving statement");
   if (diving == true) {
     Serial.println("Entered diving if statement");
-    deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
+    if (readingCnt >= 2) {
+      deltaP = psram_Readings[readingCnt-1].depthPa - psram_Readings[readingCnt-2].depthPa;
+    } else {
+      deltaP = 0.0;
+    }
     deltaT_prev = millis() - pDiveTime;
 
     // Compute delta and step
+    filterInput(depthMeter);
     BangBangBoi.run();
-    // control_output *= -1.0; // Invert control output because of motor orientation
-    stepper.moveRelativeInSteps(control_output);
+    control_output *= -1.0; // Invert control output because of motor orientation
+    stepper.setTargetPositionRelativeInSteps(control_output);
     Serial.println("Control output: " + String(control_output));
     Serial.println("Setpoint input: " + String(depthMeter));
+    delay(100);
+  }
+}
+
+void filterInput(double depthValue){
+  double delta = depthValue - previousDepth;
+  if (abs(delta) > 1) {
+    // If the change is greater than 0.1 meters, ignore it
+    control_plant = previousDepth;
+  } else {
+    // Otherwise, use the new value
+    control_plant = depthValue;
+    previousDepth = depthValue;
   }
 }
 

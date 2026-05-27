@@ -72,10 +72,11 @@ int step_pos_min = 0;
 int readings;
 int endstop_pin = 6;
 bool home_status = false;
+double previousDepth = 0.0;
 
 // Bang-bang control variables
-double control_setpoint, control_output, outputMin, outputMax = 0.0;
-AutoPID BangBangBoi(&depthMeter, &control_setpoint, &control_output, 
+double control_plant, control_setpoint, control_output, outputMin, outputMax = 0.0;
+AutoPID BangBangBoi(&control_plant, &control_setpoint, &control_output, 
   outputMin, outputMax, 0.0, 0.0, 0.0);
 
 void getTime();
@@ -90,7 +91,7 @@ void defineHTML(void);
 void step(int steps, int step_delay);
 void bounce(void);
 void handleWebserver(void);
-
+void filterInput(double depthValue);
 
 typedef struct {
     int runNumber;
