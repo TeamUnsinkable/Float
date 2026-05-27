@@ -29,16 +29,9 @@ void setup() {
 
   Serial.begin(115200);
   //while (! Serial) delay(10);
-  delay(100); // do not remove
-  stepper_driver.setup(serial_stream,
-                     SERIAL_BAUD,
-                     TMC2209::SERIAL_ADDRESS_0,
-                     UART_TX,
-                     UART_RX);
-  delay(100);  
+  delay(100); // do not remove 
   Wire.begin();
 
-  //xTaskCreate(ledTask,"LED",1024,nullptr,1,&ledTaskHandle);
   sensor.setModel(MS5837::MS5837_02BA);
 
   // Send web page to client
@@ -90,11 +83,7 @@ void setup() {
 
   Serial.println("Chooch has begun");
   //flashLED_async(8);
-  //stepper_driver.setRunCurrent(RUN_CURRENT_PERCENT);
-  //stepper_driver.enableCoolStep();
-  //stepper_driver.enable();
 
-  movement_requested = false;
   stepper.startAsService(0);
 } // end of setup()
  
@@ -117,14 +106,6 @@ void loop() {
     readingCnt++;
     Serial.println("Grabbed a data");
   }
-
-  if (movement_requested == false)  {
-    Serial.println("Opened movement statement");
-    diving = true;
-    stepper.setTargetPositionRelativeInSteps(53000);
-    movement_requested = true;
-    pDiveTime = millis();
-  }
   lastSecond = sec;
   /*
   for (int r = 0; r < readingCnt; r++){
@@ -143,30 +124,13 @@ void loop() {
   //Serial.println(readings);
   handleWebserver();
 
-  //if (!stepper.isStartedAsService()) {
-  //  Serial.println("FUCK");
-  //}
-
   Serial.println("Reached diving statement");
   if (diving == true) {
     Serial.print("Entered diving if statement");
     deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
     deltaT_prev = millis() - pDiveTime;
-    Serial.println(deltaT_prev);
-
-    //if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
-    //    diving = false;
-    // stepper.setTargetPositionRelativeInSteps(-53000);
-    //}
-
-    if (deltaT_prev >= 30000) {
-      stepper.setTargetPositionRelativeInSteps(-53000);
-      diving = false;
-      
-    }
   }
 }
-
 
 void getTime(void){
   setCpuFrequencyMhz(240);
@@ -196,9 +160,9 @@ void getTime(void){
 void flashLED(int flashes) {
   for (int i = 0; i < flashes; ++i) {
   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(100);              // wait for a second
+  delayMicroseconds(100);              // wait for a second
   digitalWrite(LED_BUILTIN, LOW);
-  delay(50);    // turn the LED off by making the voltage LOW
+  delayMicroseconds(50);    // turn the LED off by making the voltage LOW
   }
 }
 
@@ -206,7 +170,6 @@ void dive(void) {
   if (diving == false)
   {
   diving = true;
-
   Serial.println("I'ma divin', bitch!");
   pDiveTime = millis(); 
   limit_hit = false;

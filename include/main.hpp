@@ -71,7 +71,6 @@ int step_pos_max = 54000;
 int step_pos_min = 0;
 int readings;
 int endstop_pin = 6;
-bool movement_requested = false;
 bool home_status = false;
 
 
@@ -110,7 +109,6 @@ IPAddress gateway(192, 168, 165, 1);
 IPAddress subnet(255, 255, 0, 0);
 HardwareSerial & serial_stream = Serial1;
 
-TMC2209 stepper_driver;
 Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 GFXcanvas16 canvas(240, 135);
 ESP_FlexyStepper stepper;
