@@ -107,16 +107,15 @@ void loop() {
   depthMeter = sensor.depth();
   depthPascal = sensor.pressure();
   sec = rtc.getSecond();
-  if (sec != lastSecond && sec % 5 == 0)
-  {
-  psram_Readings[readingCnt].runNumber = runNum;
-  psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
-  psram_Readings[readingCnt].depthM = depthMeter;      
-  psram_Readings[readingCnt].lHour = rtc.getHour();       // current hour
-  psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
-  psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
-  readingCnt++;
-  Serial.println("Grabbed a data");
+  if (sec != lastSecond && sec % 5 == 0){
+    psram_Readings[readingCnt].runNumber = runNum;
+    psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
+    psram_Readings[readingCnt].depthM = depthMeter;      
+    psram_Readings[readingCnt].lHour = rtc.getHour();       // current hour
+    psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
+    psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
+    readingCnt++;
+    Serial.println("Grabbed a data");
   }
 
   if (movement_requested == false)  {
@@ -127,13 +126,13 @@ void loop() {
     pDiveTime = millis();
   }
   lastSecond = sec;
-/*
+  /*
   for (int r = 0; r < readingCnt; r++){
        // Now output readings in CSV format to the serial port
        Serial.println("Profile#: " + String(psram_Readings[r].runNumber) + "   EX01    " + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
     "kPa  " + String(psram_Readings[r].depthM) + " meters");
   }
-*/
+  */
  if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
   WiFi.disconnect();
   WiFi.begin(ssid, password);
@@ -141,29 +140,31 @@ void loop() {
   Serial.println("Lost wifi");
  }
 
-//Serial.println(readings);
-handleWebserver();
+  //Serial.println(readings);
+  handleWebserver();
 
-//if (!stepper.isStartedAsService()) {
-//  Serial.println("FUCK");
-//}
+  //if (!stepper.isStartedAsService()) {
+  //  Serial.println("FUCK");
+  //}
 
-Serial.println("Reached diving statement");
-if (diving == true) {
-        Serial.print("Entered diving if statement");
-        deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
-        deltaT_prev = millis() - pDiveTime;
-        Serial.println(deltaT_prev);
-        //if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
-       //     diving = false;
-           // stepper.setTargetPositionRelativeInSteps(-53000);
-        //}
-         if (deltaT_prev >= 30000) {
-          stepper.setTargetPositionRelativeInSteps(-53000);
-          diving = false;
-          
-        }
+  Serial.println("Reached diving statement");
+  if (diving == true) {
+    Serial.print("Entered diving if statement");
+    deltaP = psram_Readings[readingCnt].depthPa - psram_Readings[readingCnt-1].depthPa;
+    deltaT_prev = millis() - pDiveTime;
+    Serial.println(deltaT_prev);
+
+    //if ((deltaT_prev >= 90000) || (deltaP < 500 && deltaT_prev > 11000)){
+    //    diving = false;
+    // stepper.setTargetPositionRelativeInSteps(-53000);
+    //}
+
+    if (deltaT_prev >= 30000) {
+      stepper.setTargetPositionRelativeInSteps(-53000);
+      diving = false;
+      
     }
+  }
 }
 
 
