@@ -74,6 +74,12 @@ int endstop_pin = 6;
 bool home_status = false;
 double previousDepth = 0.0;
 
+// Setpoint list and control variables
+float arrivalTime = NAN;
+int setpoint_index = 0;
+double setpoint_margin = 0.03; // meters
+double setpoint[] = {0.45, 0.25, 0.15, 0.0};
+
 // Bang-bang control variables
 double control_plant, control_setpoint, control_output, outputMin, outputMax = 0.0;
 AutoPID BangBangBoi(&control_plant, &control_setpoint, &control_output, 

@@ -8,6 +8,11 @@ void setup() {
 
  pinMode(TFT_I2C_POWER, OUTPUT);
  digitalWrite(TFT_I2C_POWER, HIGH);
+ delay(10); // Adafruit says it needs a brief delay for power to stabilize
+
+ // display repair attempt
+ pinMode(TFT_BACKLITE, OUTPUT);
+ digitalWrite(TFT_BACKLITE, HIGH);
 
 
  display.init(135, 240);           // Init ST7789 240x135
@@ -15,6 +20,7 @@ void setup() {
  canvas.setFont(&FreeSans9pt7b);
  canvas.setTextColor(ST77XX_WHITE);
 
+ 
   pinMode(6, INPUT_PULLUP);
   pinMode(9, OUTPUT);
   digitalWrite(9, LOW);
@@ -90,12 +96,12 @@ void setup() {
   stepper.startAsService(0);
 
   // Configure bang bang controller
-  outputMin = -250.0;
-  outputMax = 250.0;
+  outputMin = -250.0/4;
+  outputMax = 250.0/4;
   BangBangBoi.setOutputRange(outputMin, outputMax);
 
   control_setpoint = 0.45;
-  BangBangBoi.setBangBang(0.005);
+  BangBangBoi.setBangBang(0.01);
 } // end of setup()
  
 
@@ -148,9 +154,28 @@ void loop() {
     deltaT_prev = millis() - pDiveTime;
 
     // Benchtop validation of bang-bang controller
-    // if (millis() - pDiveTime >= 1000*90 ){
+    if (millis() - pDiveTime >= 1000*240 ){
+      control_setpoint = 0.0;
+    } 
+
+    // // Check if depth is withing margin on setpoint
+    // if (abs(control_plant - control_setpoint) <= setpoint_margin && arrivalTime == NAN) {
+    //   Serial.println("Setpoint reached: " + String(control_plant) + " meters");
+    //   arrivalTime = millis();
+    // } else if (arrivalTime != NAN && millis() - arrivalTime >= 10e3) {
+    //   // TODO: Validate loiter time
+    //   setpoint_index++;
+    //   control_setpoint = setpoint[setpoint_index];
+    //   Serial.println("Setting next waypoint" + String(control_setpoint) + "...");
+    //   arrivalTime = 0.0;
+    // } else if (arrivalTime != NAN) {
+    //   Serial.println("Loitering at setpoint: " + String(control_plant) + " meters");
+    // }
+
+    // if (setpoint_index >= sizeof(setpoint)/sizeof(setpoint[0])) {
+    //   Serial.println("Final setpoint reached!");
     //   control_setpoint = 0.0;
-    // } 
+    // }
 
     // Compute delta and step
     filterInput(depthMeter);
@@ -161,7 +186,7 @@ void loop() {
     Serial.println("Control output: " + String(control_output));
     Serial.println("Plant state: " + String(depthMeter));
     Serial.println("Setpoint state: " + String(control_setpoint));
-    delay(100);
+    delay(250);
   }
 }
 
@@ -171,16 +196,25 @@ void limitCheck(double relativeMove){
   Serial.println("End Stop: " + String(digitalRead(endstop_pin)));
   if (currentPosition >= step_pos_max || digitalRead(endstop_pin) == HIGH) {
     Serial.println("Limit hit!");
-  } else if (currentPosition + relativeMove > step_pos_max) {
-    stepper.setTargetPositionRelativeInSteps(step_pos_max - currentPosition - currentPosition);
+  }  
+  
+  if (currentPosition + relativeMove > step_pos_max) {
+    stepper.setTargetPositionInSteps(step_pos_max);
+    // stepper.setTargetPositionRelativeInSteps(step_pos_max - currentPosition - currentPosition);
     Serial.println("Running to upper limit!");
     return;
   } else if (currentPosition + relativeMove < step_pos_min) {
-    stepper.setTargetPositionRelativeInSteps(step_pos_min - currentPosition - currentPosition);
+    stepper.setTargetPositionInSteps(step_pos_min);
+    // stepper.setTargetPositionRelativeInSteps(step_pos_min - currentPosition - currentPosition);
     Serial.println("Running to lower limit!");
     return;
   } else {
-    stepper.setTargetPositionRelativeInSteps(relativeMove);
+    double error = depthMeter - control_setpoint; 
+    // Set threshold
+    if (error > 0.1) {
+      error = 0.0;
+    } 
+    stepper.setTargetPositionRelativeInSteps(relativeMove + error*1e-2);
   }
 
 }
