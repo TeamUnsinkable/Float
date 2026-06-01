@@ -6,57 +6,41 @@ void setup() {
   Serial.println("Begin chooch");
   getTime();
 
- pinMode(TFT_I2C_POWER, OUTPUT);
- digitalWrite(TFT_I2C_POWER, HIGH);
- delay(10); // Adafruit says it needs a brief delay for power to stabilize
+  // Display Initialization
+  pinMode(TFT_I2C_POWER, OUTPUT);
+  digitalWrite(TFT_I2C_POWER, HIGH);
+  delay(10); // Adafruit says it needs a brief delay for power to stabilize
+  // display repair attempt
+  pinMode(TFT_BACKLITE, OUTPUT);
+  digitalWrite(TFT_BACKLITE, HIGH);
+  display.init(135, 240);           // Init ST7789 240x135
+  display.setRotation(3);
+  canvas.setFont(&FreeSans9pt7b);
+  canvas.setTextColor(ST77XX_WHITE);
 
- // display repair attempt
- pinMode(TFT_BACKLITE, OUTPUT);
- digitalWrite(TFT_BACKLITE, HIGH);
-
-
- display.init(135, 240);           // Init ST7789 240x135
- display.setRotation(3);
- canvas.setFont(&FreeSans9pt7b);
- canvas.setTextColor(ST77XX_WHITE);
-
- 
+  // Limit Switch Configuration
   pinMode(6, INPUT_PULLUP);
   pinMode(9, OUTPUT);
   digitalWrite(9, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
 
+  // PSRAM Initialization
   psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
-        if(psramInit()){
-        Serial.println("\nPSRAM is correctly initialized");
-        }else{
-        Serial.println("PSRAM not available");
-        }
+  if(psramInit()){
+    Serial.println("\nPSRAM is correctly initialized");
+  } else {
+    Serial.println("PSRAM not available");
+  }
 
   Serial.begin(115200);
   //while (! Serial) delay(10);
   delay(100); // do not remove 
   Wire.begin();
-
-  sensor.setModel(MS5837::MS5837_02BA);
-
-  // Send web page to client
-  server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index_html);
-  });
-
-  // Receive an HTTP GET request
-  server1.on("/on", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    dive();   
-    request->send(200, "text/plain", "ok");
-  });
-
-  // Receive an HTTP GET request
-  server1.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "ok");
-  });
   
-  server1.onNotFound(notFound);
+  // Configure Webserver
+  setupWebServer();
+
+  // Stepper Configuration
   stepper.connectToPins(step_pin, dir_pin);
   stepper.setSpeedInStepsPerSecond(5000);
   stepper.setAccelerationInStepsPerSecondPerSecond(10000);
@@ -66,13 +50,18 @@ void setup() {
   if (home_status == true) {
     Serial.println("Homing successful");
     // stepper.setCurrentPositionInSteps(step_pos_max - 251);
-    stepper.setTargetPositionRelativeInSteps(-step_pos_max + 251);
+    stepper.setTargetPositionRelativeInSteps(-step_pos_max );
   } else {
     Serial.println("Homing failed");
   }
+  // When used with moveRelativeInStep will cause race condition
+  stepper.startAsService(0);
 
   // Initialize pressure sensor
   // We can't continue with the rest of the program unless we can initialize the sensor
+  // Configure pressure sensor
+  sensor.setModel(MS5837::MS5837_02BA); 
+  sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
   while (!sensor.init()) {
     Serial.println("Init failed!");
     Serial.println("Are SDA/SCL connected correctly?");
@@ -81,38 +70,39 @@ void setup() {
     delay(100);
     flashLED(4);
   }
-  sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
-  //xTaskCreate(sensorTask,"SensorTask",2048,nullptr,2,&sensorTaskHandle);
+
+  // Display startup message
   canvas.fillScreen(ST77XX_BLACK);
   canvas.setCursor(0, 25);
   canvas.setFont(&FreeSans9pt7b);
   canvas.print("SHE'S ALIVEEEEEEEEE");
   display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
 
+
   Serial.println("Chooch has begun");
   //flashLED_async(8);
 
-  // When used with moveRelativeInStep will cause race condition
-  stepper.startAsService(0);
-
-  // Configure bang bang controller
-  outputMin = -250.0/4;
-  outputMax = 250.0/4;
+  // Configure Depth Controller
+  // TODO: Fix this 
+  outputMin = -250.0;
+  outputMax = 250.0;
+  BangBangBoi.setTimeStep(control_loop_rate_ms);
   BangBangBoi.setOutputRange(outputMin, outputMax);
-
   control_setpoint = 0.45;
-  BangBangBoi.setBangBang(0.01);
+  // BangBangBoi.setBangBang(0.01);
 } // end of setup()
  
 
 void loop() {
-  Serial.println("Home status: " + String(home_status));
-  //flashLED_async(1);
   flashLED(1);
+  
+  // Get sensor readings
   sensor.read();
   depthMeter = sensor.depth();
   depthPascal = sensor.pressure();
   sec = rtc.getSecond();
+
+  // Record Sensor Readings
   if (sec != lastSecond && sec % 5 == 0){
     psram_Readings[readingCnt].runNumber = runNum;
     psram_Readings[readingCnt].depthPa = depthPascal/10.0f;        
@@ -120,73 +110,77 @@ void loop() {
     psram_Readings[readingCnt].lHour = rtc.getHour();       // current hour
     psram_Readings[readingCnt].lMin = rtc.getMinute();     // current minute
     psram_Readings[readingCnt].lSec = rtc.getSecond();     // current second
+    psram_Readings[readingCnt].packet = readingCnt; // example packet identifier
     readingCnt++;
     Serial.println("Grabbed a data");
   }
   lastSecond = sec;
-  /*
-  for (int r = 0; r < readingCnt; r++){
-       // Now output readings in CSV format to the serial port
-       Serial.println("Profile#: " + String(psram_Readings[r].runNumber) + "   EX01    " + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
-    "kPa  " + String(psram_Readings[r].depthM) + " meters");
-  }
-  */
- if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
-  WiFi.disconnect();
-  WiFi.begin(ssid, password);
-  flashLED(2);
-  Serial.println("Lost wifi");
- }
 
-  //Serial.println(readings);
-  handleWebserver();
+  // Wifi Reconnection Logic
+  if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
+    flashLED(2);
+    Serial.println("Lost wifi");
+  }
+
+  // handleWebserver();
   // stepper.moveRelativeInSteps(-250);
   // delay(100);
 
   Serial.println("Reached diving statement");
   if (diving == true) {
-    Serial.println("Entered diving if statement");
-    if (readingCnt >= 2) {
-      deltaP = psram_Readings[readingCnt-1].depthPa - psram_Readings[readingCnt-2].depthPa;
-    } else {
-      deltaP = 0.0;
-    }
-    deltaT_prev = millis() - pDiveTime;
 
-    // Benchtop validation of bang-bang controller
-    if (millis() - pDiveTime >= 1000*240 ){
-      control_setpoint = 0.0;
-    } 
-
-    // // Check if depth is withing margin on setpoint
-    // if (abs(control_plant - control_setpoint) <= setpoint_margin && arrivalTime == NAN) {
-    //   Serial.println("Setpoint reached: " + String(control_plant) + " meters");
-    //   arrivalTime = millis();
-    // } else if (arrivalTime != NAN && millis() - arrivalTime >= 10e3) {
-    //   // TODO: Validate loiter time
-    //   setpoint_index++;
-    //   control_setpoint = setpoint[setpoint_index];
-    //   Serial.println("Setting next waypoint" + String(control_setpoint) + "...");
-    //   arrivalTime = 0.0;
-    // } else if (arrivalTime != NAN) {
-    //   Serial.println("Loitering at setpoint: " + String(control_plant) + " meters");
-    // }
-
-    // if (setpoint_index >= sizeof(setpoint)/sizeof(setpoint[0])) {
-    //   Serial.println("Final setpoint reached!");
+    Serial.println("Entered diving if statement");  
+        
+    // Benchtop validation
+    // int loiter_min = 4;
+    // if (millis() - pDiveTime >= loiter_min * 60 * 1000){
     //   control_setpoint = 0.0;
-    // }
+    // } 
 
-    // Compute delta and step
+    // Setpoint Traversal Logic
+    // traverseSetpoints();
+
+    // Control Implementation Logic
     filterInput(depthMeter);
     BangBangBoi.run();
-    // Benchtop validation
     // control_output *= -1.0; // Invert control output because of motor orientation
     limitCheck(control_output);
+    Serial.println("Controller Weights: Kp: " + String(Kp) + ", Ki: " + String(Ki) + ", Kd:" + String(Kd));
     Serial.println("Control output: " + String(control_output));
     Serial.println("Plant state: " + String(depthMeter));
-    Serial.println("Setpoint state: " + String(control_setpoint));
-    delay(250);
+    Serial.println("Current Setpoint: " + String(control_setpoint));
+    Serial.println("Arrived at Setpoint: " + String(BangBangBoi.atSetPoint(setpoint_margin)));
+
+    // Run 2 twice as fast to ensure we don't miss the window for setpoint arrival
+  }
+}
+
+void traverseSetpoints() {
+  if (BangBangBoi.atSetPoint(setpoint_margin) && isnan(arrivalTime)) {
+      // Just arrived
+      arrivalTime = millis();
+      Serial.println("Setpoint reached: " + String(control_plant) + " meters");
+  } else if (!isnan(arrivalTime) && millis() - arrivalTime >= loiter_time_sec * 1e3) {
+      // Loiter complete — check bounds before incrementing
+      arrivalTime = NAN;
+      if (setpoint_index + 1 < sizeof(setpoint) / sizeof(setpoint[0])) {
+          setpoint_index++;
+          control_setpoint = setpoint[setpoint_index];
+          Serial.println("Setting next waypoint: " + String(control_setpoint) + "...");
+      } else {
+          Serial.println("Final setpoint reached!\nSurfacing...");
+          BangBangBoi.stop();
+          stepper.moveToPositionInSteps(step_pos_max);
+      }
+  } else if (!isnan(arrivalTime) && !BangBangBoi.atSetPoint(setpoint_margin)) {
+      // Departed early
+      arrivalTime = NAN;
+      Serial.println("Departed from setpoint, resetting timer");
+  } else if (!isnan(arrivalTime)) {
+      // Still loitering
+      Serial.println("Loitering at setpoint: " + String(control_plant) + " meters");
   }
 }
 
@@ -209,14 +203,8 @@ void limitCheck(double relativeMove){
     Serial.println("Running to lower limit!");
     return;
   } else {
-    double error = depthMeter - control_setpoint; 
-    // Set threshold
-    if (error > 0.1) {
-      error = 0.0;
-    } 
-    stepper.setTargetPositionRelativeInSteps(relativeMove + error*1e-2);
+    stepper.setTargetPositionRelativeInSteps(relativeMove);
   }
-
 }
 
 void filterInput(double depthValue){
@@ -237,19 +225,21 @@ void getTime(void){
   WiFi.setHostname("float-esp32");
   MDNS.begin("float-esp32");
   WiFi.begin(ssid, password);
+
   while (WiFi.status() != WL_CONNECTED) {
     flashLED(2);
     Serial.println("No wifi");
     delay(400);
   }
+
+  // Wait for internet connectivity before configuring NTP
   while (Ping.ping("www.google.com") == false) {
     flashLED(3);
     delay(2000);
-    Serial.print("No internet");
+    Serial.println("No internet");
   }
-
-  server1.begin();
-  server2.begin();
+  
+  // Configure local time via NTP
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         struct tm timeinfo = rtc.getTimeStruct();
         if (getLocalTime(&timeinfo)){
@@ -260,139 +250,19 @@ void getTime(void){
 
 void flashLED(int flashes) {
   for (int i = 0; i < flashes; ++i) {
-  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delayMicroseconds(100);              // wait for a second
-  digitalWrite(LED_BUILTIN, LOW);
-  delayMicroseconds(50);    // turn the LED off by making the voltage LOW
+    digitalWrite(LED_BUILTIN, HIGH);    // turn the LED on (HIGH is the voltage level)
+    delayMicroseconds(100);             // 1ms
+    digitalWrite(LED_BUILTIN, LOW);     // turn the LED off by making the voltage LOW
+    delayMicroseconds(50);              // 0.5 ms
   }
 }
 
 void dive(void) {
   if (diving == false)
   {
-  diving = true;
-  Serial.println("I'ma divin', bitch!");
-  pDiveTime = millis(); 
-  limit_hit = false;
-  JustInCase = millis();
-  runNum++;  
+    diving = true;
+    Serial.println("I'ma divin', bitch!");
+    pDiveTime = millis(); 
+    runNum++;  
   } 
 }
-
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html>
-  <head>
-    <title>ESP Pushbutton Web Server</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-      body { font-family: Arial; text-align: center; margin:0px auto; padding-top: 30px;}
-      .button {
-        padding: 10px 20px;
-        font-size: 24px;
-        text-align: center;
-        outline: none;
-        color: #fff;
-        background-color: #2f4468;
-        border: none;
-        border-radius: 5px;
-        box-shadow: 0 6px #999;
-        cursor: pointer;
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        -khtml-user-select: none;
-        -moz-user-select: none;
-        -ms-user-select: none;
-        user-select: none;
-        -webkit-tap-highlight-color: rgba(0,0,0,0);
-      }  
-      .button:hover {background-color: #1f2e45}
-      .button:active {
-        background-color: #1f2e45;
-        box-shadow: 0 4px #666;
-        transform: translateY(2px);
-      }
-    </style>
-  </head>
-  <body>
-    <h1>ESP32-Driven Float</h1>
-    <button class="button" onmousedown="toggleCheckbox('on');" ontouchstart="toggleCheckbox('on');" onmouseup="toggleCheckbox('off');" ontouchend="toggleCheckbox('off');">DIVE!</button>
-   <script>
-   function toggleCheckbox(x) {
-     var xhr = new XMLHttpRequest();
-     xhr.open("GET", "/" + x, true);
-     xhr.send();
-   }
-  </script>
-  </body>
-</html>)rawliteral";
-
-
-void handleWebserver() {
-
-WiFiClient client = server2.available();   // Listen for incoming clients
-
-
-if (client) {                             // If a new client connects,
-    currentTime = millis();
-    previousTime = currentTime;
-    Serial.println("New Client.");          // Print a message out in the serial port
-    String currentLine = "";                // Make a String to hold incoming data from the client
-    while (client.connected() && currentTime - previousTime <= timeoutTime) {  // Loop while the client's connected
-      currentTime = millis();
-      if (client.available()) {             // If there's bytes to read from the client,
-        char c = client.read();             // Read a byte, then
-        Serial.write(c);                    // Print it out the serial monitor
-        header += c;
-        if (c == '\n') {                    // If the byte is a newline character
-          // If the current line is blank, you got two newline characters in a row.
-          // That's the end of the client HTTP request, so send a response:
-          if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // And a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println("Connection: close");
-            client.println();
-            
-            // Display the HTML web page
-            client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-            client.println("<link rel=\"icon\" href=\"data:,\">");
-            // CSS to style the table 
-            client.println("<style>body { text-align: center; font-family: \"Trebuchet MS\", Arial;}");
-            client.println("table { border-collapse: collapse; width:35%; margin-left:auto; margin-right:auto; }");
-            client.println("th { padding: 12px; background-color: #0043af; color: white; }");
-            client.println("tr { border: 1px solid #ddd; padding: 12px; }");
-            client.println("tr:hover { background-color: #bcbcbc; }");
-            client.println("td { border: none; padding: 12px; }");
-            client.println(".sensor { color:white; font-weight: bold; background-color: #bcbcbc; padding: 1px; }");
-            client.println("</style></head><body><h1>Da Floaty Boi</h1>");
-            for (int r = 0; r < readingCnt; r++){
-            client.println("<p> Profile#:" + String(psram_Readings[r].runNumber) +  "  EX01  "  + String(psram_Readings[r].lHour) + ":" + String(psram_Readings[r].lMin) + ":" + String(psram_Readings[r].lSec) + "  EST   " + String(psram_Readings[r].depthPa) + 
-        "kPa  " + String(psram_Readings[r].depthM) + " meters</p>");
-            }
-         
-            // The HTTP response ends with another blank line
-            client.println();
-            // Break out of the while loop
-            break;
-          } else { // If you got a newline, then clear currentLine
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // If you got anything else but a carriage return character,
-          currentLine += c;      // Add it to the end of the currentLine
-        }
-      }
-    }
-
-
-
-    // Clear the header variable
-    header = "";
-    // Close the connection
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
-  }
-}
-

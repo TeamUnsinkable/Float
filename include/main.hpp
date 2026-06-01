@@ -1,3 +1,6 @@
+#ifndef MAIN_HPP
+#define MAIN_HPP
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -19,116 +22,158 @@
 #include <Adafruit_GFX.h>
 #include <Fonts/FreeSans12pt7b.h>
 #include <Adafruit_Sensor.h>
-#include <stdio.h>
 #include <string>
 #include <ESP_FlexyStepper.h>
 #include <AutoPID.h>
+#include <WebHandler.hpp>
+#include <DataLogging.hpp>
 
-// Analog servos run at ~50 Hz updates
+// ------------ Pin Definitions ------------
 #define maximumReadings 2000
 #define D0 0 // button D0 on feather board
 #define D1 1 // button D1 on feather board
 #define D2 2 // button D2 on feather board
-bool NewReading = false;
-bool Logging = false;
-int LoggingEnabler = 0;
-bool endLog = false;
-int loggingDisabler = 0;
-int readingCnt = 0;
-int prevReadingCnt = 0;
-const char* ntpServer = "pool.ntp.org";
-const int daylightOffset_sec = 3600;
-const char* ssid = "SM-N950U48f"; //"Justin's S25+";
-const char* password = "bucketman";//"8e9uphtuumacfst";
-unsigned long currentTime = millis(); 
-unsigned long previousTime = 0; 
-const long timeoutTime = 2000; // Define timeout time in milliseconds (example: 2000ms = 2s)
-String header;
-const long gmtOffset_sec = -18000;
-float depthPascal = 0.0;
-double depthMeter = 0.0;
-int runNum = 0;
-bool diving;
-int JustInCase = 0;
-double pressureValueMax;
-double pressureValueMin;
-double deltaP;
-static int lastSecond = -1;
-int sec;
-bool limit_hit = false;
-int step_pin = 16;
 int UART_RX = 18;
 int UART_TX = 17;
-int dir_pin = 15;
+
+// bool NewReading = false;
+// bool Logging = false;
+// int LoggingEnabler = 0;
+// bool endLog = false;
+// int loggingDisabler = 0;
+int readingCnt = 0;
+int prevReadingCnt = 0;
+
+
+
+// unsigned long currentTime = millis(); 
+unsigned long previousTime = 0; 
+const long timeoutTime = 2000; // Define timeout time in milliseconds (example: 2000ms = 2s)
+int runNum = 0;
+bool diving;
+// int JustInCase = 0;
+
+// double deltaP;
+static int lastSecond = -1;
+int sec;
 static const long SERIAL_BAUD = 9600;
 unsigned long pDiveTime = 0;
 unsigned long deltaT_prev;
-int step_pos = 0;
-bool bouncing;
+
 const uint8_t RUN_CURRENT_PERCENT = 100;
-float lastDiveCall = millis();
-int step_pos_max = 54000;
-int step_pos_min = 0;
-int readings;
-int endstop_pin = 6;
-bool home_status = false;
+// float lastDiveCall = millis();
+// int readings;
+
+
+// ------------ Wireless and Webserver Variables ------------
+const char* ssid = "SM-N950U48f"; //"Justin's S25+";
+const char* password = "bucketman";//"8e9uphtuumacfst";
+const char* ntpServer = "pool.ntp.org";
+const int daylightOffset_sec = 3600;
+const long gmtOffset_sec = -18000;
+extern const char index_html[] PROGMEM;
+IPAddress local_IP(192, 168, 165, 183);
+IPAddress gateway(192, 168, 165, 1);
+IPAddress subnet(255, 255, 0, 0);
+AsyncWebServer server1(80);
+// WiFiServer server2(8080);
+String header;
+
+
+// ------------ Stepper Variables ------------
+bool limit_hit = false;     // Flag to indicate if limit has been hit
+bool home_status = false;   // Flag to indicate if homing was successful
+int step_pos = 0;           // Current step position
+int step_pin = 16;          // Pin connected to step signal of stepper driver
+int dir_pin = 15;           // Pin connected to direction signal of stepper driver
+int endstop_pin = 6;        // Pin connected to endstop switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
+int step_pos_max = 54000;   // Maximum step position (corresponding to fully extended plunger)
+int step_pos_min = 0;       // Minimum step position (corresponding to fully retracted plunger)
+ESP_FlexyStepper stepper;   // Stepper object
+
+
+// ------------ Sensor Variables ------------
+MS5837 sensor;
 double previousDepth = 0.0;
+double pressureValueMax, pressureValueMin;
+float depthPascal, depthMeter = 0.0;
+sReadings *psram_Readings;
 
-// Setpoint list and control variables
-float arrivalTime = NAN;
-int setpoint_index = 0;
-double setpoint_margin = 0.03; // meters
-double setpoint[] = {0.45, 0.25, 0.15, 0.0};
 
-// Bang-bang control variables
+// ------------ Display Variables ------------
+Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+GFXcanvas16 canvas(240, 135);
+
+// ------------ Setpoint Variables ------------
+double arrivalTime = NAN;
+int setpoint_index = 0, loiter_time_sec = 10;
+float setpoint_margin = 0.05; // meters
+float setpoint[] = {0.45, 0.25, 0.15, 0.0};
+
+// ------------ PID Variables ------------
 double control_plant, control_setpoint, control_output, outputMin, outputMax = 0.0;
+double Kp, Ki, Kd = 0.0;
+uint32_t control_loop_rate_ms = 500; // How often to run control loop in milliseconds (e.g. 100 ms = 10 Hz)
 AutoPID BangBangBoi(&control_plant, &control_setpoint, &control_output, 
-  outputMin, outputMax, 0.0, 0.0, 0.0);
+  outputMin, outputMax, Kp, Ki, Kd);
+
+
+// ------------ Function declarations ------------
+
 
 void getTime();
 void flashLED(int times);
 //void ledTask(void*);
+
+/**
+ * @brief Initiates the diving sequence.
+ * Sets the diving flag, records the dive start time, and increments the run number.
+ * This function is called when the dive command is received, and it prepares the system 
+ * for a new dive by updating relevant state variables.
+ */
 void dive();
-void surface();
-void home();
-void stop();
+
+// void surface();
+// void stop();
 //void flashLED_async(uint32_t flashes);
-void defineHTML(void);
-void step(int steps, int step_delay);
-void bounce(void);
+// void step(int steps, int step_delay);
 void handleWebserver(void);
+
+/**
+ * @brief Filters input depth values to reject erratic measurements.
+ * 
+ * Compares the new depth value against the previously recorded depth.
+ * If the change exceeds 1 meter, the new value is rejected and the previous
+ * depth is retained. Otherwise, the new value is accepted and stored.
+ * 
+ * @param depthValue The new depth measurement to filter
+ */
 void filterInput(double depthValue);
+
+/**
+ * @brief Check and constrain a proposed relative move for the stepper motor.
+ *
+ * This function determines whether a requested relative movement (in steps)
+ * would move the stepper beyond configured limits or trigger the endstop.
+ * If the move would exceed the allowed range, the stepper target is set to
+ * the corresponding limit (step_pos_max or step_pos_min). If the move is
+ * within bounds, it is applied as a relative move.
+ *
+ * @param relativeMove The requested movement relative to the current position (in steps).
+ */
 void limitCheck(double relativeMove);
 
+/**
+ * @brief Traverse through a list of setpoints.
+ *
+ * This function manages the logic for moving the stepper motor to each setpoint
+ * in the sequence, handling arrival detection, loitering, and transition to the next setpoint.
+ */
+void traverseSetpoints();
 
-typedef struct {
-    int runNumber;
-    int lHour;
-    int lMin;
-    int lSec;
-  float depthPa;
-  float depthM;
-  char  packet;
-} sReadings;
-
-sReadings *psram_Readings;
-MS5837 sensor;
-
-extern const char index_html[] PROGMEM;
-
+// ------------ ESP Variables ------------
 ESP32Time rtc(0);
-IPAddress local_IP(192, 168, 165, 183);
-IPAddress gateway(192, 168, 165, 1);
-IPAddress subnet(255, 255, 0, 0);
 HardwareSerial & serial_stream = Serial1;
 
-Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
-GFXcanvas16 canvas(240, 135);
-ESP_FlexyStepper stepper;
 
-void notFound(AsyncWebServerRequest *request) {
-  request->send(404, "text/plain", "Not found");
-}
-
-AsyncWebServer server1(80);
-WiFiServer server2(8080);
+#endif
