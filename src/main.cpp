@@ -42,7 +42,7 @@ void setup() {
 
   // Stepper Configuration
   stepper.connectToPins(step_pin, dir_pin);
-  stepper.setSpeedInStepsPerSecond(5000);
+  stepper.setSpeedInStepsPerSecond(4000);
   stepper.setAccelerationInStepsPerSecondPerSecond(10000);
   stepper.setDecelerationInStepsPerSecondPerSecond(10000);
   Serial.println("Attempting to home...");
@@ -84,6 +84,9 @@ void setup() {
 
   // Configure Depth Controller
   // TODO: Fix this 
+  Kp = 1.0;
+  Ki = 0.0;
+  Kd = 0.0;
   outputMin = -250.0;
   outputMax = 250.0;
   BangBangBoi.setTimeStep(control_loop_rate_ms);
