@@ -1,559 +1,708 @@
-<!DOCTYPE HTML>
-<html>
-  <head>
-    <title>ESP32-Driven Float</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Float Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300..700&display=swap" rel="stylesheet">
+<style>
+/* ── Tokens ── */
+:root,[data-theme="dark"]{
+  --bg:#0d0f11; --surface:#131619; --surface-2:#181c20; --off:#1e2328;
+  --border:rgba(255,255,255,0.07); --border-s:rgba(255,255,255,0.13);
+  --text:#e2e8f0; --muted:#8892a4; --faint:#4a5568;
+  --primary:#00b4d8; --primary-h:#0096b7; --primary-d:rgba(0,180,216,0.13);
+  --ok:#4ade80; --ok-d:rgba(74,222,128,0.12);
+  --warn:#fb923c; --err:#f87171; --err-d:rgba(248,113,113,0.12);
+  --r-sm:6px; --r-md:10px; --font:\'Inter\',system-ui,sans-serif; --mono:\'JetBrains Mono\',monospace;
+  --sh-sm:0 1px 3px rgba(0,0,0,0.45); --t:160ms cubic-bezier(0.16,1,0.3,1);
+}
+[data-theme="light"]{
+  --bg:#f0f4f8; --surface:#fff; --surface-2:#f8fafc; --off:#eef2f7;
+  --border:rgba(0,0,0,0.07); --border-s:rgba(0,0,0,0.13);
+  --text:#0f172a; --muted:#475569; --faint:#94a3b8;
+  --primary:#0369a1; --primary-h:#075985; --primary-d:rgba(3,105,161,0.1);
+  --ok:#16a34a; --ok-d:rgba(22,163,74,0.1);
+  --warn:#c2410c; --err:#dc2626; --err-d:rgba(220,38,38,0.1);
+  --sh-sm:0 1px 3px rgba(0,0,0,0.08);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-font-smoothing:antialiased;}
+body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--bg);
+  display:flex;flex-direction:column;min-height:100dvh;}
+button{cursor:pointer;background:none;border:none;font:inherit;color:inherit;}
+input{font:inherit;color:inherit;}
+:focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-radius:var(--r-sm);}
 
-    <style>
-      * {
-        box-sizing: border-box;
-      }
+/* ── Header ── */
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;flex-shrink:0;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  box-shadow:var(--sh-sm);position:sticky;top:0;z-index:100;
+}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-text{font-size:15px;font-weight:700;letter-spacing:-0.4px;}
+.logo-sub{font-size:10px;color:var(--faint);font-family:var(--mono);}
+.hdr-r{display:flex;align-items:center;gap:8px;}
+.pill{display:flex;align-items:center;gap:6px;padding:4px 10px;
+  border-radius:20px;font-size:11px;font-weight:500;font-family:var(--mono);
+  background:var(--off);border:1px solid var(--border);color:var(--muted);transition:all var(--t);}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--faint);transition:all var(--t);}
+.pill.ok .dot{background:var(--ok);box-shadow:0 0 5px var(--ok);}
+.pill.ok{color:var(--ok);}
+.theme-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--r-sm);color:var(--muted);transition:all var(--t);}
+.theme-btn:hover{background:var(--off);color:var(--text);}
 
-      html,
-      body {
-        min-height: 100%;
-      }
+/* ── Mobile nav tabs (hidden on desktop) ── */
+.mob-tabs{
+  display:none;
+  position:sticky;top:53px;z-index:90;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  overflow-x:auto;white-space:nowrap;
+  -webkit-overflow-scrolling:touch;
+}
+.mob-tabs button{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:10px 16px;font-size:12px;font-weight:600;
+  color:var(--muted);border-bottom:2px solid transparent;
+  transition:all var(--t);
+}
+.mob-tabs button.active{color:var(--primary);border-bottom-color:var(--primary);}
 
-      body {
-        margin: 0;
-        padding: 16px;
-        font-family: Arial, sans-serif;
-        background: #f4f4f4;
-        text-align: center;
+/* ── Desktop: sidebar + content side by side ── */
+.layout{display:flex;flex:1;min-height:0;}
 
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
+.sidebar{
+  width:260px;flex-shrink:0;
+  background:var(--surface);border-right:1px solid var(--border);
+  overflow-y:auto;display:flex;flex-direction:column;
+}
+.sb-sec{padding:14px;}
+.sb-sec+.sb-sec{border-top:1px solid var(--border);}
+.sb-lbl{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);margin-bottom:10px;}
 
-      .page-container {
-        width: 100%;
-        max-width: 900px;
-      }
+.content{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.pane{display:flex;flex-direction:column;flex:1;min-height:0;}
+.pane+.pane{border-top:1px solid var(--border);}
 
-      .main-panel {
-        width: 100%;
-        padding: 20px;
-        border: 1px solid #888;
-        border-radius: 12px;
-        background: white;
-      }
+/* ── Mobile: single scrollable column, tabs switch sections ── */
+@media(max-width:700px){
+  body{overflow:auto;min-height:100dvh;}
+  .mob-tabs{display:block;}
+  .layout{display:block;}
+  .sidebar{width:100%;border-right:none;overflow:visible;height:auto;}
+  .content{overflow:visible;height:auto;}
+  .pane{min-height:0;height:auto;overflow:visible;}
+  .pane+.pane{border-top:none;}
 
-      h1 {
-        margin: 0 0 22px 0;
-        font-size: 1.7rem;
-      }
+  /* Section visibility toggled by JS */
+  .sec{display:none;}
+  .sec.active{display:flex;flex-direction:column;}
 
-      .button {
-        width: 100%;
-        max-width: 260px;
-        padding: 14px 20px;
-        font-size: 24px;
-        text-align: center;
-        outline: none;
-        color: #fff;
-        background-color: #2f4468;
-        border: none;
-        border-radius: 8px;
-        box-shadow: 0 6px #999;
-        cursor: pointer;
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        -khtml-user-select: none;
-        -moz-user-select: none;
-        -ms-user-select: none;
-        user-select: none;
-        -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
-      }
+  /* Log body needs explicit height on mobile */
+  .log-body{height:55vh !important;flex:none !important;}
+  .table-wrap{height:45vh !important;flex:none !important;}
+}
 
-      .button:hover {
-        background-color: #1f2e45;
-      }
+/* ── Dive button ── */
+.dive-btn{
+  width:100%;padding:13px;border-radius:var(--r-md);
+  font-size:14px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+  background:var(--primary);color:#fff;
+  transition:background var(--t),box-shadow var(--t),transform var(--t);
+}
+.dive-btn:hover{background:var(--primary-h);box-shadow:0 0 18px rgba(0,180,216,0.35);}
+.dive-btn:active{transform:scale(0.97);}
+.dive-btn.surfacing{background:var(--err);animation:dp 1.8s ease-in-out infinite;}
+@keyframes dp{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.45);}60%{box-shadow:0 0 0 9px rgba(248,113,113,0);}}
 
-      .button:active {
-        background-color: #1f2e45;
-        box-shadow: 0 4px #666;
-        transform: translateY(2px);
-      }
+/* ── Metric cards ── */
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.metric{background:var(--off);border:1px solid var(--border);border-radius:var(--r-md);padding:9px 11px;}
+.m-lbl{font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--faint);margin-bottom:3px;}
+.m-val{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--primary);line-height:1;}
+.m-unit{font-size:10px;color:var(--faint);margin-top:2px;}
+@media(max-width:700px){
+  .metric-grid{grid-template-columns:repeat(4,1fr);}
+  .m-val{font-size:16px;}
+}
+@media(max-width:480px){
+  .metric-grid{grid-template-columns:1fr 1fr;}
+}
 
-      .tuning-panel,
-      .readings-panel {
-        width: 100%;
-        margin-top: 28px;
-        padding-top: 22px;
-        border-top: 1px solid #ddd;
-      }
+/* ── PID ── */
+.pid-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.field{display:flex;flex-direction:column;gap:3px;}
+.field.full{grid-column:1/-1;}
+.field label{font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--muted);}
+.field input{
+  width:100%;padding:7px 9px;background:var(--off);border:1px solid var(--border);
+  border-radius:var(--r-sm);font-family:var(--mono);font-size:12px;color:var(--text);
+  transition:border-color var(--t),box-shadow var(--t);
+  -webkit-appearance:none;
+}
+.field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-d);outline:none;}
+.btn-row{display:flex;gap:7px;margin-top:6px;}
+.btn{
+  flex:1;padding:8px 10px;border-radius:var(--r-sm);font-size:12px;font-weight:600;
+  border:1px solid var(--border);background:var(--off);color:var(--text);
+  transition:all var(--t);min-height:36px;
+}
+.btn:hover{background:var(--surface-2);border-color:var(--border-s);}
+.btn.primary{background:var(--primary);border-color:transparent;color:#fff;}
+.btn.primary:hover{background:var(--primary-h);}
+#pidStatus{
+  margin-top:7px;padding:7px 9px;border-radius:var(--r-sm);
+  font-family:var(--mono);font-size:11px;line-height:1.5;
+  background:var(--off);color:var(--muted);border:1px solid var(--border);
+}
 
-      .tuning-summary,
-      .readings-panel h2 {
-        margin: 0 0 18px 0;
-        text-align: center;
-        font-size: 1.35rem;
-        font-weight: bold;
-      }
+/* ── Pane headers ── */
+.ph{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;flex-shrink:0;
+  background:var(--surface);border-bottom:1px solid var(--border);
+}
+.ph-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);}
+.ph-acts{display:flex;gap:5px;flex-wrap:wrap;}
+.ib{
+  display:flex;align-items:center;gap:4px;padding:5px 9px;
+  border-radius:var(--r-sm);font-size:11px;font-weight:500;
+  background:var(--off);border:1px solid var(--border);color:var(--muted);
+  transition:all var(--t);min-height:30px;
+}
+.ib:hover{background:var(--surface-2);color:var(--text);border-color:var(--border-s);}
 
-      .tuning-summary {
-        cursor: pointer;
-        list-style: none;
-        padding: 12px;
-        border-radius: 8px;
-        background: #e9e9e9;
-        border: 1px solid #ccc;
-        user-select: none;
-        -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
-      }
+/* ── Table ── */
+.table-wrap{flex:1;overflow:auto;min-height:0;-webkit-overflow-scrolling:touch;}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;}
+thead th{
+  position:sticky;top:0;z-index:1;padding:7px 13px;text-align:left;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);
+}
+tbody tr{transition:background var(--t);}
+tbody tr:hover{background:var(--surface-2);}
+tbody td{padding:7px 13px;border-bottom:1px solid var(--border);color:var(--muted);}
+tbody td:first-child{color:var(--text);}
+.empty td{text-align:center;color:var(--faint);padding:36px;font-family:var(--font);font-size:13px;}
 
-      .tuning-summary::-webkit-details-marker {
-        display: none;
-      }
+/* ── Log ── */
+.log-filter-bar{
+  display:flex;align-items:center;gap:8px;padding:6px 14px;
+  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;
+  flex-wrap:wrap;row-gap:6px;
+}
+.fi{
+  flex:1;min-width:120px;padding:6px 8px;background:var(--off);
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  font-family:var(--mono);font-size:11px;color:var(--text);
+  transition:border-color var(--t);-webkit-appearance:none;
+}
+.fi:focus{border-color:var(--primary);outline:none;}
+.lc{font-size:10px;color:var(--faint);font-family:var(--mono);white-space:nowrap;}
+.as-lbl{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);
+  cursor:pointer;padding:4px 6px;border-radius:var(--r-sm);user-select:none;transition:background var(--t);}
+.as-lbl:hover{background:var(--off);}
+.asdot{width:9px;height:9px;border-radius:50%;border:2px solid var(--border-s);transition:all var(--t);}
+.asdot.on{background:var(--primary);border-color:var(--primary);}
+.log-body{flex:1;overflow-y:auto;padding:8px 14px;
+  font-family:var(--mono);font-size:12px;line-height:1.75;background:var(--bg);
+  -webkit-overflow-scrolling:touch;}
+.ll{display:flex;gap:9px;padding:1px 4px;border-radius:3px;}
+.ll:hover{background:var(--off);}
+.lts{color:var(--faint);flex-shrink:0;user-select:none;font-size:11px;}
+.lm{word-break:break-all;}
+.lm.info{color:var(--muted);}
+.lm.good{color:var(--ok);}
+.lm.warn{color:var(--warn);}
+.lm.err{color:var(--err);}
 
-      .tuning-summary::after {
-        content: " -";
-        font-size: 0.9rem;
-      }
+/* Scrollbars */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border-s);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--faint);}
 
-      .tuning-panel:not([open]) .tuning-summary::after {
-        content: " +";
-      }
+/* ── Competition view ── */
+.comp-body{
+  flex:1;overflow-y:auto;padding:10px 14px;background:var(--bg);
+  -webkit-overflow-scrolling:touch;
+  font-family:var(--mono);font-size:13px;line-height:1.6;
+}
+@media(max-width:700px){.comp-body{height:60vh;flex:none;}}
+.comp-entry{
+  display:flex;align-items:flex-start;gap:0;
+  padding:7px 12px;margin-bottom:5px;
+  border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);
+  transition:background var(--t),border-color var(--t);
+  cursor:default;
+}
+.comp-entry:hover{background:var(--off);border-color:var(--border-s);}
+.comp-profile{
+  flex-shrink:0;width:28px;height:28px;border-radius:50%;
+  background:var(--primary-d);border:1.5px solid var(--primary);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;color:var(--primary);margin-right:12px;margin-top:2px;
+}
+.comp-main{flex:1;min-width:0;}
+.comp-top{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:3px;}
+.comp-run{font-size:11px;font-weight:700;color:var(--primary);letter-spacing:0.3px;}
+.comp-id{font-size:10px;color:var(--faint);font-weight:600;letter-spacing:0.5px;background:var(--off);padding:1px 5px;border-radius:3px;border:1px solid var(--border);}
+.comp-time{font-size:11px;color:var(--muted);font-family:var(--mono);}
+.comp-tz{font-size:10px;color:var(--faint);}
+.comp-depth{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+.comp-kpa{font-size:15px;font-weight:600;color:var(--text);}
+.comp-kpa span{font-size:10px;color:var(--faint);font-weight:400;margin-left:2px;}
+.comp-m{font-size:13px;color:var(--ok);font-weight:600;}
+.comp-m span{font-size:10px;color:var(--faint);font-weight:400;margin-left:2px;}
+.comp-empty{text-align:center;padding:40px 20px;color:var(--faint);font-family:var(--font);font-size:13px;}
+</style>
+</head>
+<body>
 
-      .tuning-content {
-        margin-top: 18px;
-      }
+<!-- Header -->
+<header>
+  <div class="logo">
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none" style="color:var(--primary)">
+      <circle cx="13" cy="13" r="11.5" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M13 6.5v6.5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="13" cy="13" r="1.75" fill="currentColor"/>
+    </svg>
+    <div>
+      <div class="logo-text">Float Control</div>
+      <div class="logo-sub">ESP32 &middot; Stepper &middot; PID</div>
+    </div>
+  </div>
+  <div class="hdr-r">
+    <div class="pill" id="connPill">
+      <div class="dot"></div>
+      <span id="connLabel">Connecting&hellip;</span>
+    </div>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle theme">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
 
-      .tuning-row {
-        display: grid;
-        grid-template-columns: 120px minmax(0, 1fr);
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 12px;
-      }
+<!-- Mobile tab bar -->
+<nav class="mob-tabs" id="mobTabs">
+  <button class="active" onclick="showTab('ctrl')">&#x1F3AE; Control</button>
+  <button onclick="showTab('metrics')">&#x1F4CA; Readings</button>
+  <button onclick="showTab('tuning')">&#x2699;&#xFE0F; Tuning</button>
+  <button onclick="showTab('table')">&#x1F4CB; Table</button>
+  <button onclick="showTab('comp')">&#x1F3C6; Competition</button>
+  <button onclick="showTab('log')">&#x1F5A5; Log</button>
+</nav>
 
-      .tuning-row label {
-        font-weight: bold;
-        font-size: 1.05rem;
-        text-align: left;
-      }
+<div class="layout">
 
-      .tuning-row input {
-        width: 100%;
-        min-width: 0;
-        padding: 12px;
-        font-size: 1.1rem;
-        border: 1px solid #777;
-        border-radius: 8px;
-      }
+  <!-- Sidebar -->
+  <aside class="sidebar">
 
-      .tuning-buttons {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        margin-top: 18px;
-      }
+    <div class="sb-sec sec active" id="sec-ctrl">
+      <div class="sb-lbl">Dive Control</div>
+      <button class="dive-btn" id="diveBtn" onclick="toggleDive()">DIVE!</button>
+    </div>
 
-      .readings-buttons {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 12px;
-        margin-top: 18px;
-      }
+    <div class="sb-sec sec active" id="sec-metrics">
+      <div class="sb-lbl">Live Readings</div>
+      <div class="metric-grid">
+        <div class="metric"><div class="m-lbl">Depth</div><div class="m-val" id="mDepth">—</div><div class="m-unit">meters</div></div>
+        <div class="metric"><div class="m-lbl">Pressure</div><div class="m-val" id="mPressure">—</div><div class="m-unit">hPa</div></div>
+        <div class="metric"><div class="m-lbl">Setpoint</div><div class="m-val" id="mSetpoint">—</div><div class="m-unit">meters</div></div>
+        <div class="metric"><div class="m-lbl">PID Out</div><div class="m-val" id="mOutput">—</div><div class="m-unit">steps/s</div></div>
+      </div>
+    </div>
 
-      @media (min-width: 600px) {
-        .readings-buttons {
-          grid-template-columns: 1fr 1fr 1fr;
-        }
-      }
+    <div class="sb-sec sec active" id="sec-tuning">
+      <div class="sb-lbl">Controller Tuning</div>
+      <div class="pid-grid">
+        <div class="field"><label for="kp">Kp</label><input id="kp" type="number" step="0.01" placeholder="0.00" inputmode="decimal"/></div>
+        <div class="field"><label for="ki">Ki</label><input id="ki" type="number" step="0.01" placeholder="0.00" inputmode="decimal"/></div>
+        <div class="field"><label for="kd">Kd</label><input id="kd" type="number" step="0.01" placeholder="0.00" inputmode="decimal"/></div>
+        <div class="field"><label for="setpoint">Setpoint (m)</label><input id="setpoint" type="number" step="0.01" placeholder="0.45" inputmode="decimal"/></div>
+        <div class="field full"><label for="loop_ms">Loop Rate (ms)</label><input id="loop_ms" type="number" step="1" placeholder="100" inputmode="numeric"/></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" onclick="getTuning()">&#8595; Get</button>
+        <button class="btn primary" onclick="pushTuning()">&#8593; Push</button>
+      </div>
+      <div id="pidStatus">Ready.</div>
+    </div>
 
-      .tuning-buttons button,
-      .readings-buttons button {
-        width: 100%;
-        padding: 14px;
-        font-size: 1.1rem;
-        border-radius: 8px;
-        border: 1px solid #555;
-        background: #e9e9e9;
-        cursor: pointer;
-        -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
-      }
+  </aside>
 
-      .tuning-buttons button:active,
-      .readings-buttons button:active {
-        transform: translateY(1px);
-      }
+  <!-- Content -->
+  <div class="content">
 
-      #tuningStatus,
-      #tableStatus {
-        min-height: 1.4em;
-        margin: 14px 0 0 0;
-        text-align: center;
-        font-size: 0.95rem;
-      }
-
-      .table-wrapper {
-        width: 100%;
-        max-height: 360px;
-        margin-top: 12px;
-        overflow: auto;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-      }
-
-      #readingsTable {
-        width: 100%;
-        min-width: 620px;
-        border-collapse: collapse;
-        font-size: 0.85rem;
-      }
-
-      #readingsTable th,
-      #readingsTable td {
-        padding: 8px;
-        border-bottom: 1px solid #ddd;
-        text-align: center;
-        white-space: nowrap;
-      }
-
-      #readingsTable th {
-        position: sticky;
-        top: 0;
-        background: #f0f0f0;
-        font-weight: bold;
-        z-index: 1;
-      }
-
-      #readingsTable tbody tr:last-child td {
-        border-bottom: none;
-      }
-
-      .log-wrapper {
-        margin-top: 12px;
-      }
-
-      #readingsLog {
-        text-align: left;
-        background: #f7f7f7;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 10px;
-        max-height: 400px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-size: 0.85rem;
-      }
-
-      @media (max-width: 430px) {
-        body {
-          padding: 10px;
-        }
-
-        .main-panel {
-          padding: 14px;
-        }
-
-        h1 {
-          font-size: 1.45rem;
-        }
-
-        .button {
-          font-size: 21px;
-        }
-
-        .tuning-row {
-          grid-template-columns: 92px minmax(0, 1fr);
-          gap: 8px;
-        }
-
-        .tuning-row label {
-          font-size: 0.95rem;
-        }
-
-        .tuning-row input {
-          padding: 10px;
-          font-size: 1rem;
-        }
-
-        .tuning-buttons,
-        .readings-buttons {
-          gap: 8px;
-        }
-
-        .tuning-buttons button,
-        .readings-buttons button {
-          padding: 12px;
-          font-size: 1rem;
-        }
-
-        #readingsTable {
-          font-size: 0.8rem;
-        }
-      }
-    </style>
-  </head>
-
-  <body>
-    <main class="page-container">
-      <section class="main-panel">
-        <h1>ESP32-Driven Float</h1>
-
-        <button
-          class="button"
-          onmousedown="toggleCheckbox('on');"
-          ontouchstart="toggleCheckbox('on');"
-          onmouseup="toggleCheckbox('off');"
-          ontouchend="toggleCheckbox('off');">
-          DIVE!
-        </button>
-
-        <details class="tuning-panel" open>
-          <summary class="tuning-summary">Controller Tuning</summary>
-
-          <div class="tuning-content">
-            <div class="tuning-row">
-              <label for="kiInput">Ki</label>
-              <input type="number" id="kiInput" step="0.0001" inputmode="decimal" value="0.0">
-            </div>
-
-            <div class="tuning-row">
-              <label for="kpInput">Kp</label>
-              <input type="number" id="kpInput" step="0.0001" inputmode="decimal" value="0.0">
-            </div>
-
-            <div class="tuning-row">
-              <label for="kdInput">Kd</label>
-              <input type="number" id="kdInput" step="0.0001" inputmode="decimal" value="0.0">
-            </div>
-
-            <div class="tuning-row">
-              <label for="setpointInput">Setpoint</label>
-              <input type="number" id="setpointInput" step="0.001" inputmode="decimal" value="0.0">
-            </div>
-
-            <div class="tuning-row">
-              <label for="loopTimeInput">Loop ms</label>
-              <input type="number" id="loopTimeInput" step="1" min="1" inputmode="numeric" value="100">
-            </div>
-
-            <div class="tuning-buttons">
-              <button type="button" onclick="getTuning()">Get</button>
-              <button type="button" onclick="pushTuning()">Push</button>
-            </div>
-
-            <p id="tuningStatus">Ready.</p>
-          </div>
-        </details>
-
-        <div class="readings-panel">
-          <h2>Depth Readings</h2>
-
-          <div class="readings-buttons">
-            <button type="button" onclick="getReadingsTable()">View Table</button>
-            <button type="button" onclick="downloadReadingsCSV()">Download CSV</button>
-            <button type="button" onclick="getReadingsLog()">View Log</button>
-          </div>
-
-          <p id="tableStatus">No table loaded.</p>
-
-          <div class="table-wrapper">
-            <table id="readingsTable">
-              <thead>
-                <tr>
-                  <th>Run</th>
-                  <th>Time</th>
-                  <th>Depth Pa</th>
-                  <th>Depth m</th>
-                  <th>Packet</th>
-                </tr>
-              </thead>
-              <tbody id="readingsTableBody">
-              </tbody>
-            </table>
-          </div>
-
-          <div class="log-wrapper">
-            <pre id="readingsLog"></pre>
-          </div>
+    <!-- Table pane -->
+    <div class="pane sec active" id="sec-table">
+      <div class="ph">
+        <span class="ph-title">Depth Readings</span>
+        <div class="ph-acts">
+          <button class="ib" onclick="loadTable()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3h18M3 9h18M3 15h18M3 21h18"/></svg>
+            View Table
+          </button>
+          <button class="ib" onclick="downloadCSV()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            CSV
+          </button>
         </div>
-      </section>
-    </main>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Run</th><th>Time</th><th>Depth (Pa)</th><th>Depth (m)</th><th>Pkt</th></tr></thead>
+          <tbody id="tableBody"><tr class="empty"><td colspan="5">No data loaded &mdash; tap View Table</td></tr></tbody>
+        </table>
+      </div>
+    </div>
 
-    <script>
-      function toggleCheckbox(x) {
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/" + x, true);
-        xhr.send();
-      }
+    <!-- Competition log pane -->
+    <div class="pane sec active" id="sec-comp">
+      <div class="ph">
+        <span class="ph-title">&#x1F3C6; Competition View</span>
+        <div class="ph-acts">
+          <button class="ib" onclick="loadCompView()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3h18M3 9h18M3 15h18M3 21h18"/></svg>
+            Load
+          </button>
+          <button class="ib" onclick="clearComp()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Clear
+          </button>
+          <button class="ib" onclick="copyComp()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+      </div>
+      <div class="log-filter-bar">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--faint);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="fi" id="compFilter" placeholder="Filter by run, time, depth&hellip;" oninput="applyCompFilter()"/>
+        <span class="lc" id="compCount">0 entries</span>
+      </div>
+      <div class="comp-body" id="compBody">
+        <div class="comp-empty">No data &mdash; tap Load to fetch readings</div>
+      </div>
+    </div>
 
-      function getTuning() {
-        fetch("/getTuning")
-          .then(response => response.json())
-          .then(data => {
-            document.getElementById("kiInput").value = data.ki;
-            document.getElementById("kpInput").value = data.kp;
-            document.getElementById("kdInput").value = data.kd;
-            document.getElementById("setpointInput").value = data.setpoint;
-            document.getElementById("loopTimeInput").value = data.loop_ms;
+    <!-- Log pane -->
+    <div class="pane sec active" id="sec-log">
+      <div class="ph">
+        <span class="ph-title">Serial Log</span>
+        <div class="ph-acts">
+          <button class="ib" onclick="clearLog()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Clear
+          </button>
+          <button class="ib" onclick="saveLog()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Save
+          </button>
+        </div>
+      </div>
+      <div class="log-filter-bar">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--faint);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="fi" id="logFilter" placeholder="Filter messages&hellip;" oninput="applyFilter()"/>
+        <span class="lc" id="logCount">0 lines</span>
+        <label class="as-lbl" for="asCheck">
+          <div class="asdot on" id="asDot"></div>
+          Auto-scroll
+        </label>
+        <input type="checkbox" id="asCheck" checked style="display:none" onchange="toggleAS()"/>
+      </div>
+      <div class="log-body" id="logBody"></div>
+    </div>
 
-            document.getElementById("tuningStatus").innerText =
-              "Tuning values loaded.";
-          })
-          .catch(error => {
-            document.getElementById("tuningStatus").innerText =
-              "Failed to get tuning values.";
-          });
-      }
 
-      function pushTuning() {
-        const ki = parseFloat(document.getElementById("kiInput").value);
-        const kp = parseFloat(document.getElementById("kpInput").value);
-        const kd = parseFloat(document.getElementById("kdInput").value);
-        const setpoint = parseFloat(document.getElementById("setpointInput").value);
-        const loopMs = parseInt(document.getElementById("loopTimeInput").value, 10);
+  </div>
+</div>
 
-        if (
-          isNaN(ki) ||
-          isNaN(kp) ||
-          isNaN(kd) ||
-          isNaN(setpoint) ||
-          isNaN(loopMs) ||
-          loopMs < 1
-        ) {
-          document.getElementById("tuningStatus").innerText =
-            "Enter valid tuning values.";
-          return;
-        }
+<script>
+// ── Theme ──
+(function(){
+  const btn=document.getElementById("themeBtn"),root=document.documentElement;
+  const icons={
+    dark:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+    light:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+  };
+  let d=matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";
+  root.setAttribute("data-theme",d);btn.innerHTML=icons[d];
+  btn.addEventListener("click",()=>{d=d==="dark"?"light":"dark";root.setAttribute("data-theme",d);btn.innerHTML=icons[d];});
+})();
 
-        const url =
-          "/updateTuning" +
-          "?ki=" + encodeURIComponent(ki) +
-          "&kp=" + encodeURIComponent(kp) +
-          "&kd=" + encodeURIComponent(kd) +
-          "&setpoint=" + encodeURIComponent(setpoint) +
-          "&loop_ms=" + encodeURIComponent(loopMs);
+// ── Mobile tabs ──
+const MOBILE_SECTIONS={
+  ctrl:['sec-ctrl'],
+  metrics:['sec-metrics'],
+  tuning:['sec-tuning'],
+  table:['sec-table'],
+  comp:['sec-comp'],
+  log:['sec-log']
+};
+const isMobile=()=>window.innerWidth<=700;
 
-        fetch(url)
-          .then(response => response.text())
-          .then(data => {
-            document.getElementById("tuningStatus").innerText = data;
-          })
-          .catch(error => {
-            document.getElementById("tuningStatus").innerText =
-              "Failed to push tuning values.";
-          });
-      }
+function showTab(tab){
+  if(!isMobile())return;
+  // Hide all
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  // Show selected
+  (MOBILE_SECTIONS[tab]||[]).forEach(id=>{
+    const el=document.getElementById(id);if(el)el.classList.add('active');
+  });
+  // Update tab highlight
+  document.querySelectorAll('#mobTabs button').forEach((b,i)=>{
+    b.classList.toggle('active',Object.keys(MOBILE_SECTIONS)[i]===tab);
+  });
+}
 
-      function getReadingsTable() {
-        document.getElementById("tableStatus").innerText = "Loading CSV...";
-        document.getElementById("readingsTableBody").innerHTML = "";
+// On resize, restore desktop (all visible)
+window.addEventListener('resize',()=>{
+  if(!isMobile()){
+    document.querySelectorAll('.sec').forEach(s=>s.classList.add('active'));
+  }
+});
 
-        fetch("/getReadingsCSV")
-          .then(response => response.text())
-          .then(csvText => {
-            const tableBody = document.getElementById("readingsTableBody");
-            tableBody.innerHTML = "";
+// ── Dive ──
+let diving=false;
+function toggleDive(){
+  const btn=document.getElementById("diveBtn");
+  if(!diving){
+    fetch("/on").then(r=>{if(r.ok){diving=true;btn.textContent="SURFACE";btn.classList.add("surfacing");addLog("Dive command sent","good");}});
+  } else {
+    fetch("/off").then(r=>{if(r.ok){diving=false;btn.textContent="DIVE!";btn.classList.remove("surfacing");addLog("Surface command sent","warn");}});
+  }
+}
 
-            const lines = csvText.trim().split(/\r?\n/);
+// ── PID ──
+function getTuning(){
+  const s=document.getElementById("pidStatus");
+  s.style.color="var(--muted)";s.textContent="Fetching\u2026";
+  fetch("/getTuning").then(r=>r.json()).then(d=>{
+    document.getElementById("kp").value=d.kp;
+    document.getElementById("ki").value=d.ki;
+    document.getElementById("kd").value=d.kd;
+    document.getElementById("setpoint").value=d.setpoint;
+    document.getElementById("loop_ms").value=d.loop_ms;
+    document.getElementById("mSetpoint").textContent=parseFloat(d.setpoint).toFixed(3);
+    s.style.color="var(--ok)";s.textContent="Loaded \u2713";
+    addLog("GET tuning \u2192 Kp="+d.kp+" Ki="+d.ki+" Kd="+d.kd,"info");
+  }).catch(e=>{s.style.color="var(--err)";s.textContent="Error: "+e;addLog("GET tuning failed: "+e,"err");});
+}
 
-            if (lines.length <= 1) {
-              document.getElementById("tableStatus").innerText =
-                "No readings available.";
-              return;
-            }
+function pushTuning(){
+  const s=document.getElementById("pidStatus");
+  const p=new URLSearchParams({
+    kp:document.getElementById("kp").value,
+    ki:document.getElementById("ki").value,
+    kd:document.getElementById("kd").value,
+    setpoint:document.getElementById("setpoint").value,
+    loop_ms:document.getElementById("loop_ms").value
+  });
+  s.style.color="var(--muted)";s.textContent="Pushing\u2026";
+  fetch("/updateTuning?"+p).then(r=>r.text()).then(t=>{
+    s.style.color="var(--ok)";s.textContent=t;
+    addLog("PUSH tuning \u2192 "+p.toString(),"good");
+  }).catch(e=>{s.style.color="var(--err)";s.textContent="Error: "+e;addLog("PUSH tuning failed: "+e,"err");});
+}
 
-            let loadedRows = 0;
+// ── Table ──
+function loadTable(){
+  const b=document.getElementById("tableBody");
+  b.innerHTML='<tr class="empty"><td colspan="5">Loading\u2026</td></tr>';
+  addLog("Fetching CSV\u2026","info");
+  fetch("/getReadingsCSV").then(r=>r.text()).then(csv=>{
+    const rows=csv.trim().split("\n").slice(1).filter(r=>r.trim());
+    if(!rows.length){b.innerHTML='<tr class="empty"><td colspan="5">No data recorded yet</td></tr>';return;}
+    b.innerHTML=rows.map(r=>{
+      const c=r.split(",");
+      const t=(c[1]||"0").padStart(2,"0")+":"+(c[2]||"0").padStart(2,"0")+":"+(c[3]||"0").padStart(2,"0");
+      return "<tr><td>"+c[0]+"</td><td>"+t+"</td><td>"+(parseFloat(c[4])||0).toFixed(2)+"</td><td>"+(parseFloat(c[5])||0).toFixed(4)+"</td><td>"+c[6]+"</td></tr>";
+    }).join("");
+    addLog("Loaded "+rows.length+" readings","good");
+    if(isMobile())showTab('table');
+  }).catch(e=>{b.innerHTML='<tr class="empty"><td colspan="5">Load failed</td></tr>';addLog("CSV error: "+e,"err");});
+}
 
-            for (let i = 1; i < lines.length; i++) {
-              const cols = lines[i].split(",");
+function downloadCSV(){
+  addLog("Downloading CSV\u2026","info");
+  const a=document.createElement("a");a.href="/getReadingsCSV";a.download="float-readings.csv";a.click();
+}
 
-              if (cols.length < 7) {
-                continue;
-              }
+// ── Log ──
+let logLines=[],autoScroll=true;
 
-              const runNumber = cols[0];
-              const lHour = cols[1];
-              const lMin = cols[2];
-              const lSec = cols[3];
-              const depthPa = cols[4];
-              const depthM = cols[5];
-              const packet = cols[6];
+function ts(){
+  const n=new Date();
+  return [n.getHours(),n.getMinutes(),n.getSeconds()].map(x=>x.toString().padStart(2,"0")).join(":")
+    +"."+n.getMilliseconds().toString().padStart(3,"0");
+}
+function classify(m){
+  const l=m.toLowerCase();
+  if(l.includes("fail")||l.includes("error")||l.includes("lost")||l.includes("not available"))return "err";
+  if(l.includes("warn")||l.includes("limit"))return "warn";
+  if(l.includes("success")||l.includes("alive")||l.includes("begin")||l.includes("chooch")||l.includes("ok")||l.includes("connected")||l.includes("hom"))return "good";
+  return "info";
+}
+function addLog(msg,cls){
+  if(!cls)cls=classify(msg);
+  const line={ts:ts(),msg,cls};
+  logLines.push(line);
+  if(logLines.length>3000)logLines.shift();
+  appendLine(line);updateCount();
+  if(autoScroll){const b=document.getElementById("logBody");b.scrollTop=b.scrollHeight;}
+}
+function appendLine(line){
+  const fv=document.getElementById("logFilter").value.toLowerCase();
+  if(fv&&!line.msg.toLowerCase().includes(fv))return;
+  const b=document.getElementById("logBody"),d=document.createElement("div");d.className="ll";
+  d.innerHTML='<span class="lts">'+line.ts+'</span><span class="lm '+line.cls+'">'+esc(line.msg)+'</span>';
+  b.appendChild(d);
+}
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function applyFilter(){
+  const b=document.getElementById("logBody");b.innerHTML="";
+  const fv=document.getElementById("logFilter").value.toLowerCase();
+  logLines.forEach(l=>{if(!fv||l.msg.toLowerCase().includes(fv))appendLine(l);});updateCount();
+}
+function updateCount(){
+  const vis=document.getElementById("logBody").children.length,tot=logLines.length;
+  document.getElementById("logCount").textContent=vis===tot?tot+" lines":vis+"/"+tot;
+}
+function clearLog(){logLines=[];document.getElementById("logBody").innerHTML="";updateCount();}
+function saveLog(){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([logLines.map(l=>l.ts+" "+l.msg).join("\n")],{type:"text/plain"}));
+  a.download="float-serial.log";a.click();
+}
+function toggleAS(){
+  autoScroll=document.getElementById("asCheck").checked;
+  document.getElementById("asDot").className="asdot"+(autoScroll?" on":"");
+}
 
-              const timeString =
-                String(lHour).padStart(2, "0") + ":" +
-                String(lMin).padStart(2, "0") + ":" +
-                String(lSec).padStart(2, "0");
 
-              const tr = document.createElement("tr");
+// ── Competition View ──
+let compData = [];
 
-              tr.innerHTML =
-                "<td>" + runNumber + "</td>" +
-                "<td>" + timeString + "</td>" +
-                "<td>" + depthPa + "</td>" +
-                "<td>" + depthM + "</td>" +
-                "<td>" + packet + "</td>";
+function loadCompView() {
+  const body = document.getElementById('compBody');
+  body.innerHTML = '<div class="comp-empty">Loading&hellip;</div>';
+  document.getElementById('compCount').textContent = '0 entries';
+  addLog('Fetching competition data…', 'info');
 
-              tableBody.appendChild(tr);
-              loadedRows++;
-            }
+  fetch('/getReadingsCSV').then(r => r.text()).then(csv => {
+    const rows = csv.trim().split('\n').slice(1).filter(r => r.trim());
+    if (!rows.length) {
+      body.innerHTML = '<div class="comp-empty">No data recorded yet</div>';
+      return;
+    }
+    compData = rows.map(row => {
+      const c = row.split(',');
+      return {
+        run:     c[0] || '?',
+        hour:    (c[1] || '0').padStart(2, '0'),
+        min:     (c[2] || '0').padStart(2, '0'),
+        sec:     (c[3] || '0').padStart(2, '0'),
+        depthPa: parseFloat(c[4]) || 0,
+        depthM:  parseFloat(c[5]) || 0,
+        pkt:     c[6] || ''
+      };
+    });
+    renderComp(compData);
+    addLog('Loaded ' + compData.length + ' competition entries', 'good');
+    if (isMobile()) showTab('comp');
+  }).catch(e => {
+    body.innerHTML = '<div class="comp-empty">Load failed</div>';
+    addLog('Competition load error: ' + e, 'err');
+  });
+}
 
-            document.getElementById("tableStatus").innerText =
-              "Loaded " + loadedRows + " readings.";
-          })
-          .catch(error => {
-            document.getElementById("tableStatus").innerText =
-              "Failed to load CSV.";
-          });
-      }
+function renderComp(data) {
+  const body = document.getElementById('compBody');
+  if (!data.length) {
+    body.innerHTML = '<div class="comp-empty">No matching entries</div>';
+    document.getElementById('compCount').textContent = '0 entries';
+    return;
+  }
+  body.innerHTML = data.map(d => {
+    const kpa = (d.depthPa / 1000).toFixed(3);
+    return `<div class="comp-entry">
+      <div class="comp-profile">${d.run}</div>
+      <div class="comp-main">
+        <div class="comp-top">
+          <span class="comp-run">Profile #${d.run}</span>
+          <span class="comp-id">EX002</span>
+          <span class="comp-time">${d.hour}:${d.min}:${d.sec}</span>
+          <span class="comp-tz">EST</span>
+        </div>
+        <div class="comp-depth">
+          <div class="comp-kpa">${kpa}<span>kPa</span></div>
+          <div class="comp-m">${d.depthM.toFixed(4)}<span>meters</span></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('compCount').textContent = data.length + ' entries';
+}
 
-      function downloadReadingsCSV() {
-        window.location.href = "/getReadingsCSV";
-      }
+function applyCompFilter() {
+  const fv = document.getElementById('compFilter').value.toLowerCase();
+  if (!fv) { renderComp(compData); return; }
+  const filtered = compData.filter(d =>
+    ('profile #' + d.run).includes(fv) ||
+    (d.hour + ':' + d.min + ':' + d.sec).includes(fv) ||
+    d.depthM.toFixed(4).includes(fv) ||
+    ((d.depthPa / 1000).toFixed(3)).includes(fv)
+  );
+  renderComp(filtered);
+  const cnt = document.getElementById('compCount');
+  cnt.textContent = filtered.length + '/' + compData.length + ' entries';
+}
 
-      function getReadingsLog() {
-        document.getElementById("tableStatus").innerText = "Loading log...";
+function clearComp() {
+  compData = [];
+  document.getElementById('compBody').innerHTML = '<div class="comp-empty">Cleared &mdash; tap Load to refresh</div>';
+  document.getElementById('compCount').textContent = '0 entries';
+}
 
-        fetch("/getReadingsCSV")
-          .then(response => response.text())
-          .then(csvText => {
-            const lines = csvText.trim().split(/\r?\n/);
+function copyComp() {
+  const text = compData.map(d =>
+    `Profile#:${d.run}  EX002  ${d.hour}:${d.min}:${d.sec}  EST   ${(d.depthPa/1000).toFixed(3)} kPa  ${d.depthM.toFixed(4)} meters`
+  ).join('\n');
+  navigator.clipboard.writeText(text).then(() => addLog('Competition log copied to clipboard', 'good'))
+    .catch(() => addLog('Clipboard copy failed', 'warn'));
+}
 
-            if (lines.length <= 1) {
-              document.getElementById("tableStatus").innerText =
-                "No readings available.";
-              return;
-            }
-
-            let output = "";
-            let loadedRows = 0;
-
-            for (let i = 1; i < lines.length; i++) {
-              const cols = lines[i].split(",");
-
-              if (cols.length < 7) {
-                continue;
-              }
-
-              output +=
-                "Profile#: " + cols[0] +
-                "  EX0200A  " +
-                cols[1] + ":" + cols[2] + ":" + cols[3] +
-                "  EST   " +
-                cols[4] +
-                " kPa  " +
-                cols[5] +
-                " meters\n";
-
-              loadedRows++;
-            }
-
-            document.getElementById("readingsLog").textContent = output;
-
-            document.getElementById("tableStatus").innerText =
-              "Loaded " + loadedRows + " readings.";
-          })
-          .catch(error => {
-            document.getElementById("tableStatus").innerText =
-              "Failed to load log.";
-          });
-      }
-    </script>
-  </body>
+// ── SSE ──
+const pill=document.getElementById("connPill"),lbl=document.getElementById("connLabel");
+function connectSSE(){
+  addLog("Connecting to /events\u2026","info");
+  const es=new EventSource("/events");
+  es.onopen=()=>{pill.classList.add("ok");lbl.textContent="Connected";addLog("Stream connected","good");};
+  es.addEventListener("log",e=>addLog(e.data));
+  es.addEventListener("telemetry",e=>{
+    try{
+      const d=JSON.parse(e.data);
+      if(d.depth!==undefined)document.getElementById("mDepth").textContent=parseFloat(d.depth).toFixed(3);
+      if(d.pressure!==undefined)document.getElementById("mPressure").textContent=parseFloat(d.pressure).toFixed(1);
+      if(d.setpoint!==undefined)document.getElementById("mSetpoint").textContent=parseFloat(d.setpoint).toFixed(3);
+      if(d.output!==undefined)document.getElementById("mOutput").textContent=parseFloat(d.output).toFixed(1);
+    }catch(_){}
+  });
+  es.onerror=()=>{
+    pill.classList.remove("ok");lbl.textContent="Reconnecting\u2026";
+    addLog("Stream lost \u2014 retrying in 3s\u2026","warn");
+    es.close();setTimeout(connectSSE,3000);
+  };
+}
+connectSSE();
+</script>
+</body>
 </html>
