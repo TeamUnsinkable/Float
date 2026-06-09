@@ -1,9 +1,53 @@
 #include <WebHandler.hpp>
 
+// ------------ Webserver Setup ------------
+AsyncEventSource events("/events");
+QueueHandle_t logQueue = xQueueCreate(LOG_QUEUE_SIZE, sizeof(char[128]));
+
+
+// ------------ Serial Handing ------------
+void serialLog(const String &msg) {
+    Serial.println(msg);
+    // Only bother queuing if someone is actually connected
+    if (events.count() == 0) return;
+    char buf[128];
+    msg.substring(0, 127).toCharArray(buf, sizeof(buf));
+    xQueueSendToBack(logQueue, buf, 0);  // non-blocking, drop if full
+}
+
+
+void drainLogQueue() {
+    // Bail immediately if no browser — no work done at all
+    if (events.count() == 0) {
+        // Flush stale queue entries so they don't burst on reconnect
+        char buf[128];
+        while (xQueueReceive(logQueue, buf, 0) == pdTRUE) {}
+        return;
+    }
+    // Drain one message per loop tick max
+    char buf[128];
+    if (xQueueReceive(logQueue, buf, 0) == pdTRUE) {
+        events.send(buf, "log", millis());
+    }
+}
+
+void broadcastTelemetry() {
+    if (events.count() == 0) return;  // zero cost when no client
+    String json = "{";
+    json += "\"depth\":"    + String(depthMeter, 4)           + ",";
+    json += "\"pressure\":" + String(depthPascal / 10.0f, 2)  + ",";
+    json += "\"setpoint\":" + String(control_setpoint, 4)     + ",";
+    json += "\"output\":"   + String(control_output, 2);
+    json += "}";
+    events.send(json.c_str(), "telemetry", millis());
+}
+
+// ------------ 404 Handler ------------
 void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
 }
 
+// ------------ Webserver Endpoints ------------
 void setupWebServer() {
 
     // Configure 404 handler
