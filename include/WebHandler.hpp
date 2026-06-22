@@ -28,7 +28,7 @@ extern float depthPascal, depthMeter;
 // ------------ Serial Logger Variables ------------
 #define LOG_QUEUE_SIZE 20
 extern AsyncEventSource events;
-QueueHandle_t logQueue;
+// QueueHandle_t logQueue;
 
 // ------------ Serial Log Helper -----------------
 /**

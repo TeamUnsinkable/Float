@@ -23,6 +23,13 @@ void setup() {
   canvas.setFont(&FreeSans9pt7b);
   canvas.setTextColor(ST77XX_WHITE);
 
+  // Display startup message
+  canvas.fillScreen(ST77XX_BLACK);
+  canvas.setCursor(0, 25);
+  canvas.setFont(&FreeSans9pt7b);
+  canvas.print("SHE'S ALIVEEEEEEEEE");
+  display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+
   // Limit Switch Configuration
   pinMode(limit_switch_pin, INPUT_PULLUP);
 

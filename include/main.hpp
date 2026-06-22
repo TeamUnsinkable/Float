@@ -84,10 +84,11 @@ int step_pin = 16;          // Pin connected to step signal of stepper driver
 int dir_pin = 15;           // Pin connected to direction signal of stepper driver
 int limit_switch_pin = 6;    // Pin connected to limit switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
 #elif defined(ESP32_S3)
-int step_pin = 12;          // Pin connected to step signal of stepper driver
-int dir_pin = 11;           // Pin connected to direction signal of stepper driver
-int limit_switch_pin = 6;    // Pin connected to limit switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
+int step_pin = 16;          // Pin connected to step signal of stepper driver
+int dir_pin = 15;           // Pin connected to direction signal of stepper driver
+int limit_switch_pin = 18;    // Pin connected to limit switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
 #endif
+
 
 
 // ------------ Sensor Variables ------------
