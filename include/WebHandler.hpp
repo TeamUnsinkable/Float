@@ -16,6 +16,7 @@ extern const char index_html[] PROGMEM;
 // ----------- Data Logging variables ------------
 extern int readingCnt;
 extern sReadings *psram_Readings;
+static uint32_t lastTx = 0;
 
 // ------------ PID Control variables ------------
 extern double Ki, Kp, Kd;
@@ -137,5 +138,6 @@ void notFound(AsyncWebServerRequest *request);
 void setupWebServer();
 
 extern void dive();
+extern void surface();
 
 #endif

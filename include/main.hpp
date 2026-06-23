@@ -75,8 +75,8 @@ bool limit_hit = false;     // Flag to indicate if limit has been hit
 bool home_status = false;   // Flag to indicate if homing was successful
 
 int step_pos = 0;           // Current step position
-int step_pos_max = 54000;   // Maximum step position (corresponding to fully extended plunger)
-int step_pos_min = 0;       // Minimum step position (corresponding to fully retracted plunger)
+const int step_pos_max = 54000;   // Maximum step position (corresponding to fully extended plunger)
+const int step_pos_min = 0;       // Minimum step position (corresponding to fully retracted plunger)
 ESP_FlexyStepper stepper;   // Stepper object
 
 #if defined(ESP32_S2)
@@ -88,8 +88,6 @@ int step_pin = 16;          // Pin connected to step signal of stepper driver
 int dir_pin = 15;           // Pin connected to direction signal of stepper driver
 int limit_switch_pin = 18;    // Pin connected to limit switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
 #endif
-
-
 
 // ------------ Sensor Variables ------------
 MS5837 sensor;              // Create an instance of the depth sensor

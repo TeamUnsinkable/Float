@@ -33,6 +33,9 @@ void drainLogQueue() {
 
 void broadcastTelemetry() {
     if (events.count() == 0) return;  // zero cost when no client
+    if (millis() - lastTx < 200) return;  // max 5 Hz
+    lastTx = millis();
+
     String json = "{";
     json += "\"depth\":"    + String(depthMeter, 4)           + ",";
     json += "\"pressure\":" + String(depthPascal / 10.0f, 2)  + ",";
@@ -52,6 +55,8 @@ void setupWebServer() {
 
     // Configure 404 handler
     server1.onNotFound(notFound);
+    // Add event handler
+    server1.addHandler(&events);
 
     // Send web page to client
     server1.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -66,6 +71,7 @@ void setupWebServer() {
 
     // Receive an HTTP GET request
     server1.on("/off", HTTP_GET, [] (AsyncWebServerRequest *request) {
+      surface();
       request->send(200, "text/plain", "ok");
     });
 
@@ -94,9 +100,9 @@ void setupWebServer() {
           return;
       }
 
-      float newKi = request->getParam("ki")->value().toFloat();
-      float newKp = request->getParam("kp")->value().toFloat();
-      float newKd = request->getParam("kd")->value().toFloat();
+      double newKi = request->getParam("ki")->value().toDouble();
+      double newKp = request->getParam("kp")->value().toDouble();
+      double newKd = request->getParam("kd")->value().toDouble();
       double newSetpoint = request->getParam("setpoint")->value().toDouble();
       uint32_t newLoopMs = request->getParam("loop_ms")->value().toInt();
 

@@ -7,15 +7,17 @@ void setup() {
   Serial.begin(115200);
   serialLog("Begin chooch");
 
-  // Blocks until WiFi connected and gets NTP time
-  getTime();
-
+  // Configure I2C for depth sensor and display
+  Wire.setPins(3, 4);
+  Wire.begin();
+  
   // Display Initialization
   pinMode(TFT_I2C_POWER, OUTPUT);
   digitalWrite(TFT_I2C_POWER, HIGH);
-  delay(10); // Adafruit says it needs a brief delay for power to stabilize
+  delay(100); // Adafruit says it needs a brief delay for power to stabilize
   pinMode(TFT_BACKLITE, OUTPUT);
   digitalWrite(TFT_BACKLITE, HIGH);
+  delay(100); // Adafruit says it needs a brief delay for power to stabilize
   // Init ST7789 240x135
   display.init(135, 240);    
   // Rotate to landscape       
@@ -24,11 +26,14 @@ void setup() {
   canvas.setTextColor(ST77XX_WHITE);
 
   // Display startup message
-  canvas.fillScreen(ST77XX_BLACK);
+  canvas.fillScreen(ST77XX_RED);
   canvas.setCursor(0, 25);
   canvas.setFont(&FreeSans9pt7b);
   canvas.print("SHE'S ALIVEEEEEEEEE");
   display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+
+  // Blocks until WiFi connected and gets NTP time
+  getTime();
 
   // Limit Switch Configuration
   pinMode(limit_switch_pin, INPUT_PULLUP);
@@ -50,7 +55,6 @@ void setup() {
 
   //while (! Serial) delay(10);
   delay(100); // do not remove 
-  Wire.begin();
   
   // Configure Webserver
   setupWebServer();
@@ -72,7 +76,7 @@ void setup() {
   if (home_status == true) {
     serialLog("Homing successful");
     // stepper.setCurrentPositionInSteps(step_pos_max - 251);
-    stepper.setTargetPositionRelativeInSteps(-step_pos_max );
+    stepper.setTargetPositionRelativeInSteps(-step_pos_max);
   } else {
     serialLog("Homing failed");
   }
@@ -89,8 +93,9 @@ void setup() {
     serialLog("Are SDA/SCL connected correctly?");
     serialLog("Blue Robotics Bar30: White=SDA, Green=SCL");
     serialLog("\n\n\n");
-    delay(100);
+    delay(250);
     flashLED(4);
+
   }
 
   serialLog("Chooch has begun");
@@ -98,7 +103,7 @@ void setup() {
 
   // Configure Depth Controller
   // TODO: Fix this 
-  Kp = 1.0;
+  Kp = -1.0;
   Ki = 0.0;
   Kd = 0.0;
   outputMin = step_pos_min;
@@ -122,6 +127,7 @@ void loop() {
   // Update web UI with telemetry
   drainLogQueue();
   broadcastTelemetry();
+  Serial.println("Depth: " + String(depthMeter));
 
   // Record Sensor Readings
   if (recordData && sec != lastSecond && sec % 5 == 0 ){
@@ -144,6 +150,7 @@ void loop() {
   lastSecond = sec;
 
   // Wifi Reconnection Logic
+  // TODO: Validate reconnection states
   if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
     WiFi.disconnect();
     WiFi.begin(ssid, password);
@@ -155,6 +162,7 @@ void loop() {
   // delay(100);
 
   // serialLog("Reached diving statement");
+  serialLog("Current Position: " + String(stepper.getCurrentPositionInSteps()));
   if (diving == true) {
 
     // serialLog("Entered diving if statement");  
@@ -171,8 +179,7 @@ void loop() {
     serialLog("Control output: " + String(control_output));
     serialLog("Plant state: " + String(depthMeter));
     serialLog("Current Setpoint: " + String(control_setpoint));
-    serialLog("Arrived at Setpoint: " + String(BangBangBoi.atSetPoint(setpoint_margin)));
-
+    serialLog("Current Target: " + String(stepper.getTargetPositionInSteps()));
     // Run 2 twice as fast to ensure we don't miss the window for setpoint arrival
   }
 }
@@ -205,14 +212,15 @@ void traverseSetpoints() {
 }
 
 void limitCheck(double absoluteTarget){
-  long currentPosition = -stepper.getCurrentPositionInSteps();
-  serialLog("Current position: " + String(currentPosition));
+  // long currentPosition = -stepper.getCurrentPositionInSteps();
+  // serialLog("Current position: " + String(currentPosition));
   serialLog("End Stop: " + String(digitalRead(limit_switch_pin)));
-  if (currentPosition >= step_pos_max || digitalRead(limit_switch_pin) == HIGH) {
+  if (digitalRead(limit_switch_pin) == LOW) {
     serialLog("Limit hit!");
   }  
-
-  absoluteTarget = constrain(absoluteTarget, step_pos_min, step_pos_max);
+  // absoluteTarget *= step_pos_max; // Convert from meters to steps
+  // absoluteTarget = constrain(absoluteTarget, step_pos_min, step_pos_max);
+  long position = step_pos_max - absoluteTarget; // Convert from meters to steps
   stepper.setTargetPositionInSteps(absoluteTarget);
 }
 
@@ -286,23 +294,23 @@ void dive(void) {
 
 void surface(void){
   recordData = false;
-  BangBangBoi.stop();
-  stepper.moveToPositionInSteps(step_pos_max);
+  // diving = false;
+  control_setpoint = -2.0;
 
   uint8_t status = 0;
-  while(true){
-    // Display surfaceing message
-    if(status == 0){
-      canvas.fillScreen(ST77XX_BLACK);
-      status = 1;
-    } else {
-      canvas.fillScreen(ST77XX_RED);
-      status = 0;
-    }
-    canvas.setCursor(0, 25);
-    canvas.setFont(&FreeSans9pt7b);
-    canvas.print("MISISON COMPLETE!");
-    display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
-    delay(500);
-  }
+  // while(true){
+  //   // Display surfaceing message
+  //   // if(status == 0){
+  //   //   canvas.fillScreen(ST77XX_BLACK);
+  //   //   status = 1;
+  //   // } else {
+  //   //   canvas.fillScreen(ST77XX_RED);
+  //   //   status = 0;
+  //   // }
+  //   // canvas.setCursor(0, 25);
+  //   // canvas.setFont(&FreeSans9pt7b);
+  //   // canvas.print("MISISON COMPLETE!");
+  //   // display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+  //   delay(500);
+  // }
 }

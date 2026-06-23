@@ -103,8 +103,6 @@ header{
   .sec{display:none;}
   .sec.active{display:flex;flex-direction:column;}
 
-  /* Log body needs explicit height on mobile */
-  .log-body{height:55vh !important;flex:none !important;}
   .table-wrap{height:45vh !important;flex:none !important;}
 }
 
@@ -191,37 +189,6 @@ tbody td{padding:7px 13px;border-bottom:1px solid var(--border);color:var(--mute
 tbody td:first-child{color:var(--text);}
 .empty td{text-align:center;color:var(--faint);padding:36px;font-family:var(--font);font-size:13px;}
 
-/* ── Log ── */
-.log-filter-bar{
-  display:flex;align-items:center;gap:8px;padding:6px 14px;
-  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;
-  flex-wrap:wrap;row-gap:6px;
-}
-.fi{
-  flex:1;min-width:120px;padding:6px 8px;background:var(--off);
-  border:1px solid var(--border);border-radius:var(--r-sm);
-  font-family:var(--mono);font-size:11px;color:var(--text);
-  transition:border-color var(--t);-webkit-appearance:none;
-}
-.fi:focus{border-color:var(--primary);outline:none;}
-.lc{font-size:10px;color:var(--faint);font-family:var(--mono);white-space:nowrap;}
-.as-lbl{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);
-  cursor:pointer;padding:4px 6px;border-radius:var(--r-sm);user-select:none;transition:background var(--t);}
-.as-lbl:hover{background:var(--off);}
-.asdot{width:9px;height:9px;border-radius:50%;border:2px solid var(--border-s);transition:all var(--t);}
-.asdot.on{background:var(--primary);border-color:var(--primary);}
-.log-body{flex:1;overflow-y:auto;padding:8px 14px;
-  font-family:var(--mono);font-size:12px;line-height:1.75;background:var(--bg);
-  -webkit-overflow-scrolling:touch;}
-.ll{display:flex;gap:9px;padding:1px 4px;border-radius:3px;}
-.ll:hover{background:var(--off);}
-.lts{color:var(--faint);flex-shrink:0;user-select:none;font-size:11px;}
-.lm{word-break:break-all;}
-.lm.info{color:var(--muted);}
-.lm.good{color:var(--ok);}
-.lm.warn{color:var(--warn);}
-.lm.err{color:var(--err);}
-
 /* Scrollbars */
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -280,10 +247,6 @@ tbody td:first-child{color:var(--text);}
     </div>
   </div>
   <div class="hdr-r">
-    <div class="pill" id="connPill">
-      <div class="dot"></div>
-      <span id="connLabel">Connecting&hellip;</span>
-    </div>
     <button class="theme-btn" id="themeBtn" aria-label="Toggle theme">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
@@ -297,7 +260,6 @@ tbody td:first-child{color:var(--text);}
   <button onclick="showTab('tuning')">&#x2699;&#xFE0F; Tuning</button>
   <button onclick="showTab('table')">&#x1F4CB; Table</button>
   <button onclick="showTab('comp')">&#x1F3C6; Competition</button>
-  <button onclick="showTab('log')">&#x1F5A5; Log</button>
 </nav>
 
 <div class="layout">
@@ -314,9 +276,9 @@ tbody td:first-child{color:var(--text);}
       <div class="sb-lbl">Live Readings</div>
       <div class="metric-grid">
         <div class="metric"><div class="m-lbl">Depth</div><div class="m-val" id="mDepth">—</div><div class="m-unit">meters</div></div>
-        <div class="metric"><div class="m-lbl">Pressure</div><div class="m-val" id="mPressure">—</div><div class="m-unit">hPa</div></div>
         <div class="metric"><div class="m-lbl">Setpoint</div><div class="m-val" id="mSetpoint">—</div><div class="m-unit">meters</div></div>
-        <div class="metric"><div class="m-lbl">PID Out</div><div class="m-val" id="mOutput">—</div><div class="m-unit">steps/s</div></div>
+        <div class="metric"><div class="m-lbl">&#916; Depth</div><div class="m-val" id="mDelta">—</div><div class="m-unit">meters</div></div>
+        <div class="metric"><div class="m-lbl">Stepper Out</div><div class="m-val" id="mOutput">—</div><div class="m-unit">steps/s</div></div>
       </div>
     </div>
 
@@ -393,35 +355,6 @@ tbody td:first-child{color:var(--text);}
       </div>
     </div>
 
-    <!-- Log pane -->
-    <div class="pane sec active" id="sec-log">
-      <div class="ph">
-        <span class="ph-title">Serial Log</span>
-        <div class="ph-acts">
-          <button class="ib" onclick="clearLog()">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-            Clear
-          </button>
-          <button class="ib" onclick="saveLog()">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-            Save
-          </button>
-        </div>
-      </div>
-      <div class="log-filter-bar">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--faint);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="fi" id="logFilter" placeholder="Filter messages&hellip;" oninput="applyFilter()"/>
-        <span class="lc" id="logCount">0 lines</span>
-        <label class="as-lbl" for="asCheck">
-          <div class="asdot on" id="asDot"></div>
-          Auto-scroll
-        </label>
-        <input type="checkbox" id="asCheck" checked style="display:none" onchange="toggleAS()"/>
-      </div>
-      <div class="log-body" id="logBody"></div>
-    </div>
-
-
   </div>
 </div>
 
@@ -444,8 +377,7 @@ const MOBILE_SECTIONS={
   metrics:['sec-metrics'],
   tuning:['sec-tuning'],
   table:['sec-table'],
-  comp:['sec-comp'],
-  log:['sec-log']
+  comp:['sec-comp']
 };
 const isMobile=()=>window.innerWidth<=700;
 
@@ -475,9 +407,9 @@ let diving=false;
 function toggleDive(){
   const btn=document.getElementById("diveBtn");
   if(!diving){
-    fetch("/on").then(r=>{if(r.ok){diving=true;btn.textContent="SURFACE";btn.classList.add("surfacing");addLog("Dive command sent","good");}});
+    fetch("/on").then(r=>{if(r.ok){diving=true;btn.textContent="SURFACE";btn.classList.add("surfacing");}});
   } else {
-    fetch("/off").then(r=>{if(r.ok){diving=false;btn.textContent="DIVE!";btn.classList.remove("surfacing");addLog("Surface command sent","warn");}});
+    fetch("/off").then(r=>{if(r.ok){diving=false;btn.textContent="DIVE!";btn.classList.remove("surfacing");}});
   }
 }
 
@@ -493,8 +425,7 @@ function getTuning(){
     document.getElementById("loop_ms").value=d.loop_ms;
     document.getElementById("mSetpoint").textContent=parseFloat(d.setpoint).toFixed(3);
     s.style.color="var(--ok)";s.textContent="Loaded \u2713";
-    addLog("GET tuning \u2192 Kp="+d.kp+" Ki="+d.ki+" Kd="+d.kd,"info");
-  }).catch(e=>{s.style.color="var(--err)";s.textContent="Error: "+e;addLog("GET tuning failed: "+e,"err");});
+  }).catch(e=>{s.style.color="var(--err)";s.textContent="Error: "+e;});
 }
 
 function pushTuning(){
@@ -509,15 +440,13 @@ function pushTuning(){
   s.style.color="var(--muted)";s.textContent="Pushing\u2026";
   fetch("/updateTuning?"+p).then(r=>r.text()).then(t=>{
     s.style.color="var(--ok)";s.textContent=t;
-    addLog("PUSH tuning \u2192 "+p.toString(),"good");
-  }).catch(e=>{s.style.color="var(--err)";s.textContent="Error: "+e;addLog("PUSH tuning failed: "+e,"err");});
+  }).catch(e=>{s.style.color="var(--err)";s.textContent="Error: "+e;});
 }
 
 // ── Table ──
 function loadTable(){
   const b=document.getElementById("tableBody");
   b.innerHTML='<tr class="empty"><td colspan="5">Loading\u2026</td></tr>';
-  addLog("Fetching CSV\u2026","info");
   fetch("/getReadingsCSV").then(r=>r.text()).then(csv=>{
     const rows=csv.trim().split("\n").slice(1).filter(r=>r.trim());
     if(!rows.length){b.innerHTML='<tr class="empty"><td colspan="5">No data recorded yet</td></tr>';return;}
@@ -526,67 +455,13 @@ function loadTable(){
       const t=(c[1]||"0").padStart(2,"0")+":"+(c[2]||"0").padStart(2,"0")+":"+(c[3]||"0").padStart(2,"0");
       return "<tr><td>"+c[0]+"</td><td>"+t+"</td><td>"+(parseFloat(c[4])||0).toFixed(2)+"</td><td>"+(parseFloat(c[5])||0).toFixed(4)+"</td><td>"+c[6]+"</td></tr>";
     }).join("");
-    addLog("Loaded "+rows.length+" readings","good");
     if(isMobile())showTab('table');
-  }).catch(e=>{b.innerHTML='<tr class="empty"><td colspan="5">Load failed</td></tr>';addLog("CSV error: "+e,"err");});
+  }).catch(e=>{b.innerHTML='<tr class="empty"><td colspan="5">Load failed</td></tr>';});
 }
 
 function downloadCSV(){
-  addLog("Downloading CSV\u2026","info");
   const a=document.createElement("a");a.href="/getReadingsCSV";a.download="float-readings.csv";a.click();
 }
-
-// ── Log ──
-let logLines=[],autoScroll=true;
-
-function ts(){
-  const n=new Date();
-  return [n.getHours(),n.getMinutes(),n.getSeconds()].map(x=>x.toString().padStart(2,"0")).join(":")
-    +"."+n.getMilliseconds().toString().padStart(3,"0");
-}
-function classify(m){
-  const l=m.toLowerCase();
-  if(l.includes("fail")||l.includes("error")||l.includes("lost")||l.includes("not available"))return "err";
-  if(l.includes("warn")||l.includes("limit"))return "warn";
-  if(l.includes("success")||l.includes("alive")||l.includes("begin")||l.includes("chooch")||l.includes("ok")||l.includes("connected")||l.includes("hom"))return "good";
-  return "info";
-}
-function addLog(msg,cls){
-  if(!cls)cls=classify(msg);
-  const line={ts:ts(),msg,cls};
-  logLines.push(line);
-  if(logLines.length>3000)logLines.shift();
-  appendLine(line);updateCount();
-  if(autoScroll){const b=document.getElementById("logBody");b.scrollTop=b.scrollHeight;}
-}
-function appendLine(line){
-  const fv=document.getElementById("logFilter").value.toLowerCase();
-  if(fv&&!line.msg.toLowerCase().includes(fv))return;
-  const b=document.getElementById("logBody"),d=document.createElement("div");d.className="ll";
-  d.innerHTML='<span class="lts">'+line.ts+'</span><span class="lm '+line.cls+'">'+esc(line.msg)+'</span>';
-  b.appendChild(d);
-}
-function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-function applyFilter(){
-  const b=document.getElementById("logBody");b.innerHTML="";
-  const fv=document.getElementById("logFilter").value.toLowerCase();
-  logLines.forEach(l=>{if(!fv||l.msg.toLowerCase().includes(fv))appendLine(l);});updateCount();
-}
-function updateCount(){
-  const vis=document.getElementById("logBody").children.length,tot=logLines.length;
-  document.getElementById("logCount").textContent=vis===tot?tot+" lines":vis+"/"+tot;
-}
-function clearLog(){logLines=[];document.getElementById("logBody").innerHTML="";updateCount();}
-function saveLog(){
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(new Blob([logLines.map(l=>l.ts+" "+l.msg).join("\n")],{type:"text/plain"}));
-  a.download="float-serial.log";a.click();
-}
-function toggleAS(){
-  autoScroll=document.getElementById("asCheck").checked;
-  document.getElementById("asDot").className="asdot"+(autoScroll?" on":"");
-}
-
 
 // ── Competition View ──
 let compData = [];
@@ -595,7 +470,6 @@ function loadCompView() {
   const body = document.getElementById('compBody');
   body.innerHTML = '<div class="comp-empty">Loading&hellip;</div>';
   document.getElementById('compCount').textContent = '0 entries';
-  addLog('Fetching competition data…', 'info');
 
   fetch('/getReadingsCSV').then(r => r.text()).then(csv => {
     const rows = csv.trim().split('\n').slice(1).filter(r => r.trim());
@@ -616,11 +490,9 @@ function loadCompView() {
       };
     });
     renderComp(compData);
-    addLog('Loaded ' + compData.length + ' competition entries', 'good');
     if (isMobile()) showTab('comp');
   }).catch(e => {
     body.innerHTML = '<div class="comp-empty">Load failed</div>';
-    addLog('Competition load error: ' + e, 'err');
   });
 }
 
@@ -676,33 +548,46 @@ function copyComp() {
   const text = compData.map(d =>
     `Profile#:${d.run}  EX002  ${d.hour}:${d.min}:${d.sec}  EST   ${(d.depthPa/1000).toFixed(3)} kPa  ${d.depthM.toFixed(4)} meters`
   ).join('\n');
-  navigator.clipboard.writeText(text).then(() => addLog('Competition log copied to clipboard', 'good'))
-    .catch(() => addLog('Clipboard copy failed', 'warn'));
+  navigator.clipboard.writeText(text);
 }
 
-// ── SSE ──
-const pill=document.getElementById("connPill"),lbl=document.getElementById("connLabel");
-function connectSSE(){
-  addLog("Connecting to /events\u2026","info");
-  const es=new EventSource("/events");
-  es.onopen=()=>{pill.classList.add("ok");lbl.textContent="Connected";addLog("Stream connected","good");};
-  es.addEventListener("log",e=>addLog(e.data));
-  es.addEventListener("telemetry",e=>{
-    try{
-      const d=JSON.parse(e.data);
-      if(d.depth!==undefined)document.getElementById("mDepth").textContent=parseFloat(d.depth).toFixed(3);
-      if(d.pressure!==undefined)document.getElementById("mPressure").textContent=parseFloat(d.pressure).toFixed(1);
-      if(d.setpoint!==undefined)document.getElementById("mSetpoint").textContent=parseFloat(d.setpoint).toFixed(3);
-      if(d.output!==undefined)document.getElementById("mOutput").textContent=parseFloat(d.output).toFixed(1);
-    }catch(_){}
-  });
-  es.onerror=()=>{
-    pill.classList.remove("ok");lbl.textContent="Reconnecting\u2026";
-    addLog("Stream lost \u2014 retrying in 3s\u2026","warn");
-    es.close();setTimeout(connectSSE,3000);
-  };
-}
-connectSSE();
+// ── Live Telemetry (SSE) ──
+(function () {
+  var currentDepth = null;
+  var currentSetpoint = null;
+
+  function updateDelta() {
+    if (currentDepth !== null && currentSetpoint !== null) {
+      document.getElementById('mDelta').textContent =
+        (currentSetpoint - currentDepth).toFixed(3);
+    }
+  }
+
+  function connect() {
+    var es = new EventSource('/events');
+    es.addEventListener('telemetry', function (e) {
+      try {
+        var d = JSON.parse(e.data);
+        if (d.depth !== undefined) {
+          currentDepth = parseFloat(d.depth);
+          document.getElementById('mDepth').textContent = currentDepth.toFixed(3);
+          updateDelta();
+        }
+        if (d.setpoint !== undefined) {
+          currentSetpoint = parseFloat(d.setpoint);
+          document.getElementById('mSetpoint').textContent = currentSetpoint.toFixed(3);
+          updateDelta();
+        }
+        if (d.output !== undefined) {
+          document.getElementById('mOutput').textContent = parseFloat(d.output).toFixed(1);
+        }
+      } catch (_) {}
+    });
+    es.onerror = function () { es.close(); setTimeout(connect, 3000); };
+  }
+
+  connect();
+})();
 </script>
 </body>
 </html>
