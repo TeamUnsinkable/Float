@@ -89,14 +89,13 @@ int limit_switch_pin = 6;    // Pin connected to limit switch (configured with p
 int step_pin = 16;            // Pin connected to step signal of stepper driver
 int dir_pin = 15;             // Pin connected to direction signal of stepper driver
 int limit_switch_pin = 18;    // Pin connected to limit switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
-int neopixel_power_pin = 21;
-int neopixel_data_pin = 33;
 #endif
 
 // ------------ Sensor Variables ------------
 MS5837 sensor;              // Create an instance of the depth sensor
 bool recordData = false;    // Flag to control when to record data (e.g., only during a dive)
 double previousDepth = 0.0; // Variable to store the previous depth reading for filtering purposes
+int color = ST77XX_BLACK;
 double pressureValueMax, pressureValueMin;
 float depthPascal = 0.0, depthMeter = 0.0;
 float allowed_depth_delta = 0.5; // maximum allowed change in depth between readings (in meters) to filter out erratic measurements
@@ -118,15 +117,15 @@ GFXcanvas16 canvas(240, 135);
 Adafruit_NeoPixel  neopixel;
 
 // ------------ Setpoint Variables ------------
-double arrivalTime = NAN, packet_count = 0;   // TODO: validate packet_count
-int setpoint_index = 0, loiter_time_sec = 10; // TODO: remove loiter time?
+double arrivalTime = NAN, packet_count = 5;   // TODO: validate packet_count
+int setpoint_index = 0, loiter_time_sec = 35; 
 float setpoint_margin = 0.05; // meters
-float setpoint[] = {0.45, 0.25, 0.15, 0.0};
+float setpoint[] = {0.40, 2.5, 1.0, 0.40, 2.5};
 
 // ------------ PID Variables ------------
 double control_plant, control_setpoint, control_output, outputMin, outputMax = 0.0;
-double Kp, Ki, Kd = 0.0;
-uint32_t control_loop_rate_ms = 500; // How often to run control loop in milliseconds (e.g. 100 ms = 10 Hz)
+double Kp = 20e3, Ki = 1.5e3, Kd = 0.2e3;
+uint32_t control_loop_rate_ms = 100; // How often to run control loop in milliseconds (e.g. 100 ms = 10 Hz)
 AutoPID BangBangBoi(&control_plant, &control_setpoint, &control_output, 
   outputMin, outputMax, Kp, Ki, Kd);
 
