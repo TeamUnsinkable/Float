@@ -113,16 +113,19 @@ void setupWebServer() {
 
       BangBangBoi.stop();
 
-      Ki = newKi;
-      Kp = newKp;
-      Kd = newKd;
+      if (!(newKi == Ki && newKp == Kp && newKd == Kd)) {
+            // Reset controller
+            Ki = newKi;
+            Kp = newKp;
+            Kd = newKd;
+            // BangBangBoi.reset();
+            BangBangBoi.setGains(Kp, Ki, Kd);
+      }
+     
       control_setpoint = newSetpoint;
       control_loop_rate_ms = newLoopMs;
 
-      BangBangBoi.setGains(Kp, Ki, Kd);
       BangBangBoi.setTimeStep(control_loop_rate_ms);
-
-      BangBangBoi.reset();
 
       Serial.println("Updated tuning:");
       Serial.println("Kp: " + String(Kp, 6));

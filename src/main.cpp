@@ -102,10 +102,6 @@ void setup() {
   //flashLED_async(8);
   writeDisplay("Awaiting for dive command", ST77XX_WHITE, ST77XX_BLACK);
   // Configure Depth Controller
-  // TODO: Fix this 
-  Kp = -1.0;
-  Ki = 0.0;
-  Kd = 0.0;
   outputMin = step_pos_min;
   outputMax = step_pos_max;
   BangBangBoi.setTimeStep(control_loop_rate_ms);
@@ -152,7 +148,7 @@ void loop() {
   // Wifi Reconnection Logic
   // TODO: Validate reconnection states
   if (( WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED ) && 
-      (millis() - lastWifiReconnect > 2000)) {
+      ((millis() - lastWifiReconnect > 2000) || true)) {
     lastWifiReconnect = millis();
     WiFi.disconnect();
     WiFi.begin(ssid, password);
@@ -166,23 +162,34 @@ void loop() {
     char* msg = (char*)malloc(128 * sizeof(char));
     sprintf(msg, "diving...\nCurrent Depth: %.2f m\n Current Setpoint: %.2f m\nCurrent Target: %ld steps", depthMeter, control_setpoint, stepper.getTargetPositionInSteps());
     writeDisplay(msg, ST77XX_WHITE, ST77XX_BLACK);
-    // Serial.println("Entered diving if statement");  
+    free(msg);
 
     // Setpoint Traversal Logic
     // traverseSetpoints();
 
-    // Control Implementation Logic
-    // filterInput(depthMeter);
-    BangBangBoi.run();
-    // control_output *= -1.0; // Invert control output because of motor orientation
-    limitCheck(control_output);
     // Serial.println("Controller Weights: Kp: " + String(Kp) + ", Ki: " + String(Ki) + ", Kd:" + String(Kd));
     Serial.println("Control output: " + String(control_output));
     Serial.println("Plant state: " + String(depthMeter));
     Serial.println("Current Setpoint: " + String(control_setpoint));
     Serial.println("Current Target: " + String(stepper.getTargetPositionInSteps()));
     Serial.println("\n\n");
-    // Run 2 twice as fast to ensure we don't miss the window for setpoint arrival
+
+    BangBangBoi.run();
+    limitCheck(control_output);
+  }
+
+
+  // Surfacing Logic
+  if (control_setpoint == -10.0) {
+    if (rtc.getSecond() % 2 == 0) {
+      color = ST77XX_RED;
+      writeDisplay("COMPLETED MISSION!", ST77XX_WHITE, color);
+    } else if (color == ST77XX_RED) {
+      color = ST77XX_BLACK;
+      writeDisplay("COMPLETED MISSION!", ST77XX_WHITE, color);
+    } 
+    
+    delay(250);
   }
 }
 
@@ -191,7 +198,7 @@ void traverseSetpoints() {
       // Just arrived
       arrivalTime = millis();
       Serial.println("Setpoint reached: " + String(control_plant) + " meters");
-  } else if (!isnan(arrivalTime) && millis() - arrivalTime >= loiter_time_sec * 1e3 && packet_count>= 7 ) {
+  } else if (!isnan(arrivalTime) && millis() - arrivalTime >= loiter_time_sec * 1e3 && packet_count >= 5 ) {
       // Loiter complete — check bounds before incrementing
       arrivalTime = NAN;
       packet_count = 0;
@@ -218,12 +225,14 @@ void limitCheck(double absoluteTarget){
   if (digitalRead(limit_switch_pin) == HIGH) {
     Serial.println("Limit hit!");
   }  
+
   Serial.println("Absolute Target: " + String(absoluteTarget));
-  // absoluteTarget *= step_pos_max; // Convert from meters to steps
-  // absoluteTarget = constrain(absoluteTarget, step_pos_min, step_pos_max);
-  long position = -step_pos_max + absoluteTarget; 
-  Serial.println("Position: " + String(position));
-  stepper.setTargetPositionInSteps(position);
+
+  if (diving == true){
+    long position = -step_pos_max + absoluteTarget; 
+    Serial.println("Position: " + String(position));
+    stepper.setTargetPositionInSteps(position);
+  }
 }
 
 void filterInput(double depthValue){
@@ -298,25 +307,9 @@ void dive(void) {
 
 void surface(void){
   recordData = false;
-  // diving = false;
-  control_setpoint = -2.0;
-
-  uint8_t status = 0;
-  // while(true){
-  //   // Display surfaceing message
-  //   // if(status == 0){
-  //   //   canvas.fillScreen(ST77XX_BLACK);
-  //   //   status = 1;
-  //   // } else {
-  //   //   canvas.fillScreen(ST77XX_RED);
-  //   //   status = 0;
-  //   // }
-  //   // canvas.setCursor(0, 25);
-  //   // canvas.setFont(&FreeSans9pt7b);
-  //   // canvas.print("MISISON COMPLETE!");
-  //   // display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
-  //   delay(500);
-  // }
+  diving = false;
+  control_setpoint = -10.0;
+  stepper.setTargetPositionInSteps(-step_pos_max);
 }
 
 void writeDisplay(const char *message, uint16_t color = ST77XX_WHITE,
