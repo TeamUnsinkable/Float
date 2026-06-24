@@ -27,6 +27,7 @@
 #include <AutoPID.h>
 #include <WebHandler.hpp>
 #include <DataLogging.hpp>
+#include <Adafruit_NeoPixel.h>
 
 // ------------ Pin Definitions ------------
 #define maximumReadings 2000
@@ -62,6 +63,7 @@ const char* hostname = "float-esp32";
 const char* ntpServer = "pool.ntp.org";
 const int daylightOffset_sec = 3600;
 const long gmtOffset_sec = -18000;
+uint32_t lastWifiReconnect = 0;
 extern const char index_html[] PROGMEM;
 // Static IP configuration 
 IPAddress local_IP(192, 168, 165, 183);
@@ -84,9 +86,11 @@ int step_pin = 16;          // Pin connected to step signal of stepper driver
 int dir_pin = 15;           // Pin connected to direction signal of stepper driver
 int limit_switch_pin = 6;    // Pin connected to limit switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
 #elif defined(ESP32_S3)
-int step_pin = 16;          // Pin connected to step signal of stepper driver
-int dir_pin = 15;           // Pin connected to direction signal of stepper driver
+int step_pin = 16;            // Pin connected to step signal of stepper driver
+int dir_pin = 15;             // Pin connected to direction signal of stepper driver
 int limit_switch_pin = 18;    // Pin connected to limit switch (configured with pull-up resistor, so HIGH when not triggered, LOW when triggered)
+int neopixel_power_pin = 21;
+int neopixel_data_pin = 33;
 #endif
 
 // ------------ Sensor Variables ------------
@@ -101,8 +105,17 @@ sReadings *psram_Readings;
 
 
 // ------------ Display Variables ------------
-Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+#ifdef ESP32_S2
+int TFT_PWR_I2C = 4;
+#elif defined(ESP32_S3)
+uint8_t TFT_PWR_I2C = 7;
+uint8_t TFT_CS_PIN = 42;
+uint8_t TFT_DC_PIN = 40;
+uint8_t TFT_RST_PIN = 41;
+#endif
+Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN);
 GFXcanvas16 canvas(240, 135);
+Adafruit_NeoPixel  neopixel;
 
 // ------------ Setpoint Variables ------------
 double arrivalTime = NAN, packet_count = 0;   // TODO: validate packet_count
@@ -188,6 +201,11 @@ void traverseSetpoints();
  * It loops between two colors on the display to indicate surfacing and commands the stepper motor to move to the maximum position.
  */
 void surface();
+
+/**
+ * @brief Writes a message to the display with specified text and background colors.
+ */
+void writeDisplay(const char *message, uint16_t color, uint16_t background);
 // ------------ ESP Variables ------------
 ESP32Time rtc(0);
 HardwareSerial & serial_stream = Serial1;

@@ -5,15 +5,15 @@
 void setup() {
   setCpuFrequencyMhz(240);
   Serial.begin(115200);
-  serialLog("Begin chooch");
+  Serial.println("Begin chooch");
 
   // Configure I2C for depth sensor and display
   Wire.setPins(3, 4);
   Wire.begin();
-  
+   
   // Display Initialization
-  pinMode(TFT_I2C_POWER, OUTPUT);
-  digitalWrite(TFT_I2C_POWER, HIGH);
+  pinMode(TFT_PWR_I2C, OUTPUT);
+  digitalWrite(TFT_PWR_I2C, HIGH);
   delay(100); // Adafruit says it needs a brief delay for power to stabilize
   pinMode(TFT_BACKLITE, OUTPUT);
   digitalWrite(TFT_BACKLITE, HIGH);
@@ -26,11 +26,12 @@ void setup() {
   canvas.setTextColor(ST77XX_WHITE);
 
   // Display startup message
-  canvas.fillScreen(ST77XX_RED);
-  canvas.setCursor(0, 25);
-  canvas.setFont(&FreeSans9pt7b);
-  canvas.print("SHE'S ALIVEEEEEEEEE");
-  display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+  // canvas.fillScreen(ST77XX_RED);
+  // canvas.setCursor(0, 25);
+  // canvas.setFont(&FreeSans9pt7b);
+  // canvas.print("SHE'S ALIVEEEEEEEEE");
+  // display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+  writeDisplay("Awaiting WiFi Network", ST77XX_WHITE, ST77XX_BLACK);
 
   // Blocks until WiFi connected and gets NTP time
   getTime();
@@ -48,9 +49,9 @@ void setup() {
   // PSRAM Initialization
   psram_Readings = (sReadings *)ps_malloc(maximumReadings * sizeof(sReadings)); 
   if(psramInit()){
-    serialLog("\nPSRAM is correctly initialized");
+    Serial.println("\nPSRAM is correctly initialized");
   } else {
-    serialLog("PSRAM not available");
+    Serial.println("PSRAM not available");
   }
 
   //while (! Serial) delay(10);
@@ -59,26 +60,25 @@ void setup() {
   // Configure Webserver
   setupWebServer();
 
-  // Display startup message
-  canvas.fillScreen(ST77XX_BLACK);
-  canvas.setCursor(0, 25);
-  canvas.setFont(&FreeSans9pt7b);
-  canvas.print("SHE'S ALIVEEEEEEEEE");
-  display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+  writeDisplay("Homing...", ST77XX_WHITE, ST77XX_BLACK);
 
   // Stepper Configuration
   stepper.connectToPins(step_pin, dir_pin);
   stepper.setSpeedInStepsPerSecond(4000);
   stepper.setAccelerationInStepsPerSecondPerSecond(10000);
   stepper.setDecelerationInStepsPerSecondPerSecond(10000);
-  serialLog("Attempting to home...");
+  Serial.println("Attempting to home...");
   home_status = stepper.moveToHomeInSteps(-1, 1000, step_pos_max*1.2, limit_switch_pin);
   if (home_status == true) {
-    serialLog("Homing successful");
+    Serial.println("Homing successful");
+    writeDisplay("Homing...\n\nSuccessful", ST77XX_GREEN, ST77XX_BLACK);
     // stepper.setCurrentPositionInSteps(step_pos_max - 251);
     stepper.setTargetPositionRelativeInSteps(-step_pos_max);
+    delay(500);
   } else {
-    serialLog("Homing failed");
+    Serial.println("Homing failed");
+    writeDisplay("Homing...\n\nFailed", ST77XX_WHITE, ST77XX_RED);
+    delay(5000);
   }
   // When used with moveRelativeInStep will cause race condition
   stepper.startAsService(0);
@@ -89,18 +89,18 @@ void setup() {
   sensor.setModel(MS5837::MS5837_02BA); 
   sensor.setFluidDensity(1000); // kg/m^3 (freshwater, 1029 for seawater)
   while (!sensor.init()) {
-    serialLog("Init failed!");
-    serialLog("Are SDA/SCL connected correctly?");
-    serialLog("Blue Robotics Bar30: White=SDA, Green=SCL");
-    serialLog("\n\n\n");
+    writeDisplay("Depth Sensor Init Failed", ST77XX_WHITE, ST77XX_RED);
+    Serial.println("Init failed!");
+    Serial.println("Are SDA/SCL connected correctly?");
+    Serial.println("Blue Robotics Bar30: White=SDA, Green=SCL");
+    Serial.println("\n\n\n");
     delay(250);
     flashLED(4);
-
   }
 
-  serialLog("Chooch has begun");
+  Serial.println("Chooch has begun");
   //flashLED_async(8);
-
+  writeDisplay("Awaiting for dive command", ST77XX_WHITE, ST77XX_BLACK);
   // Configure Depth Controller
   // TODO: Fix this 
   Kp = -1.0;
@@ -145,27 +145,28 @@ void loop() {
       packet_count++;
     }
 
-    // serialLog("Grabbed a data");
+    // Serial.println("Grabbed a data");
   }
   lastSecond = sec;
 
   // Wifi Reconnection Logic
   // TODO: Validate reconnection states
-  if (WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED) {
+  if (( WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED ) && 
+      (millis() - lastWifiReconnect > 2000)) {
+    lastWifiReconnect = millis();
     WiFi.disconnect();
     WiFi.begin(ssid, password);
     // flashLED(2);
-    serialLog("Lost wifi");
+    Serial.println("Lost wifi");
   }
 
-  // stepper.moveRelativeInSteps(-250);
-  // delay(100);
 
-  // serialLog("Reached diving statement");
-  serialLog("Current Position: " + String(stepper.getCurrentPositionInSteps()));
+  Serial.println("Current Position: " + String(stepper.getCurrentPositionInSteps()));
   if (diving == true) {
-
-    // serialLog("Entered diving if statement");  
+    char* msg = (char*)malloc(128 * sizeof(char));
+    sprintf(msg, "diving...\nCurrent Depth: %.2f m\n Current Setpoint: %.2f m\nCurrent Target: %ld steps", depthMeter, control_setpoint, stepper.getTargetPositionInSteps());
+    writeDisplay(msg, ST77XX_WHITE, ST77XX_BLACK);
+    // Serial.println("Entered diving if statement");  
 
     // Setpoint Traversal Logic
     // traverseSetpoints();
@@ -175,11 +176,12 @@ void loop() {
     BangBangBoi.run();
     // control_output *= -1.0; // Invert control output because of motor orientation
     limitCheck(control_output);
-    // serialLog("Controller Weights: Kp: " + String(Kp) + ", Ki: " + String(Ki) + ", Kd:" + String(Kd));
-    serialLog("Control output: " + String(control_output));
-    serialLog("Plant state: " + String(depthMeter));
-    serialLog("Current Setpoint: " + String(control_setpoint));
-    serialLog("Current Target: " + String(stepper.getTargetPositionInSteps()));
+    // Serial.println("Controller Weights: Kp: " + String(Kp) + ", Ki: " + String(Ki) + ", Kd:" + String(Kd));
+    Serial.println("Control output: " + String(control_output));
+    Serial.println("Plant state: " + String(depthMeter));
+    Serial.println("Current Setpoint: " + String(control_setpoint));
+    Serial.println("Current Target: " + String(stepper.getTargetPositionInSteps()));
+    Serial.println("\n\n");
     // Run 2 twice as fast to ensure we don't miss the window for setpoint arrival
   }
 }
@@ -188,7 +190,7 @@ void traverseSetpoints() {
   if (BangBangBoi.atSetPoint(setpoint_margin) && isnan(arrivalTime)) {
       // Just arrived
       arrivalTime = millis();
-      serialLog("Setpoint reached: " + String(control_plant) + " meters");
+      Serial.println("Setpoint reached: " + String(control_plant) + " meters");
   } else if (!isnan(arrivalTime) && millis() - arrivalTime >= loiter_time_sec * 1e3 && packet_count>= 7 ) {
       // Loiter complete — check bounds before incrementing
       arrivalTime = NAN;
@@ -196,32 +198,32 @@ void traverseSetpoints() {
       if (setpoint_index + 1 < sizeof(setpoint) / sizeof(setpoint[0]) ) {
           setpoint_index++;
           control_setpoint = setpoint[setpoint_index];
-          serialLog("Setting next waypoint: " + String(control_setpoint) + "...");
+          Serial.println("Setting next waypoint: " + String(control_setpoint) + "...");
       } else {
-          serialLog("Final setpoint reached!\nSurfacing...");
+          Serial.println("Final setpoint reached!\nSurfacing...");
           surface();
       }
   } else if (!isnan(arrivalTime) && !BangBangBoi.atSetPoint(setpoint_margin)) {
       // Departed early
       arrivalTime = NAN;
-      serialLog("Departed from setpoint, resetting timer");
+      Serial.println("Departed from setpoint, resetting timer");
   } else if (!isnan(arrivalTime)) {
       // Still loitering
-      serialLog("Loitering at setpoint: " + String(control_plant) + " meters");
+      Serial.println("Loitering at setpoint: " + String(control_plant) + " meters");
   }
 }
 
 void limitCheck(double absoluteTarget){
-  // long currentPosition = -stepper.getCurrentPositionInSteps();
-  // serialLog("Current position: " + String(currentPosition));
-  serialLog("End Stop: " + String(digitalRead(limit_switch_pin)));
-  if (digitalRead(limit_switch_pin) == LOW) {
-    serialLog("Limit hit!");
+  Serial.println("End Stop: " + String(digitalRead(limit_switch_pin)));
+  if (digitalRead(limit_switch_pin) == HIGH) {
+    Serial.println("Limit hit!");
   }  
+  Serial.println("Absolute Target: " + String(absoluteTarget));
   // absoluteTarget *= step_pos_max; // Convert from meters to steps
   // absoluteTarget = constrain(absoluteTarget, step_pos_min, step_pos_max);
-  long position = step_pos_max - absoluteTarget; // Convert from meters to steps
-  stepper.setTargetPositionInSteps(absoluteTarget);
+  long position = -step_pos_max + absoluteTarget; 
+  Serial.println("Position: " + String(position));
+  stepper.setTargetPositionInSteps(position);
 }
 
 void filterInput(double depthValue){
@@ -245,7 +247,7 @@ void getTime(void){
 
   while (WiFi.status() != WL_CONNECTED) {
     flashLED(2);
-    serialLog("No wifi");
+    Serial.println("No wifi");
     delay(400);
   }
 
@@ -253,15 +255,17 @@ void getTime(void){
   while (Ping.ping("www.google.com") == false) {
     flashLED(3);
     delay(2000);
-    serialLog("No internet");
+    Serial.println("No internet");
   }
+
+  writeDisplay("Connected to WiFi!", ST77XX_WHITE, ST77XX_BLACK);
   
   // Configure local time via NTP
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         struct tm timeinfo = rtc.getTimeStruct();
         if (getLocalTime(&timeinfo)){
         rtc.setTimeStruct(timeinfo); 
-        serialLog(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
+        Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
  } 
 } 
 
@@ -278,7 +282,7 @@ void dive(void) {
   if (diving == false) {
     diving = true;
     recordData = true;
-    serialLog("I'ma divin', bitch!");
+    Serial.println("I'ma divin', bitch!");
     pDiveTime = millis(); 
     // TODO: Check what we want this to be
     runNum++;  
@@ -313,4 +317,49 @@ void surface(void){
   //   // display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
   //   delay(500);
   // }
+}
+
+void writeDisplay(const char *message, uint16_t color = ST77XX_WHITE,
+  uint16_t background = ST77XX_BLACK) {
+
+    canvas.setFont(&FreeSans9pt7b);
+    canvas.setTextColor(color);
+    canvas.fillScreen(background);
+
+    // Split message into lines on \n
+    String full = String(message);
+    int lineCount = 1;
+    for (int i = 0; i < (int)full.length(); i++) {
+        if (full[i] == '\n') lineCount++;
+    }
+
+    // Measure line height using a reference character
+    int16_t x1, y1;
+    uint16_t lineW, lineH;
+    canvas.getTextBounds("A", 0, 0, &x1, &y1, &lineW, &lineH);
+    int lineSpacing = lineH + 4;
+
+    // Total block height, start Y centered
+    int blockH = lineCount * lineSpacing;
+    int startY = (135 / 2) - (blockH / 2) + lineH;
+
+    // Draw each line centered horizontally
+    int lineIndex = 0;
+    int start = 0;
+    for (int i = 0; i <= (int)full.length(); i++) {
+        if (full[i] == '\n' || full[i] == '\0') {
+            String line = full.substring(start, i);
+            int16_t lx, ly;
+            uint16_t lw, lh;
+            canvas.getTextBounds(line.c_str(), 0, 0, &lx, &ly, &lw, &lh);
+            int cursorX = (240 / 2) - (lw / 2) - lx;
+            int cursorY = startY + lineIndex * lineSpacing;
+            canvas.setCursor(cursorX, cursorY);
+            canvas.print(line);
+            lineIndex++;
+            start = i + 1;
+        }
+    }
+
+    display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
 }
