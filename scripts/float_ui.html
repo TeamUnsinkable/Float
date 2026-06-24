@@ -278,7 +278,7 @@ tbody td:first-child{color:var(--text);}
         <div class="metric"><div class="m-lbl">Depth</div><div class="m-val" id="mDepth">—</div><div class="m-unit">meters</div></div>
         <div class="metric"><div class="m-lbl">Setpoint</div><div class="m-val" id="mSetpoint">—</div><div class="m-unit">meters</div></div>
         <div class="metric"><div class="m-lbl">&#916; Depth</div><div class="m-val" id="mDelta">—</div><div class="m-unit">meters</div></div>
-        <div class="metric"><div class="m-lbl">Stepper Out</div><div class="m-val" id="mOutput">—</div><div class="m-unit">steps/s</div></div>
+        <div class="metric"><div class="m-lbl">Stepper Out</div><div class="m-val" id="mOutput">—</div><div class="m-unit">steps</div></div>
       </div>
     </div>
 
