@@ -42,7 +42,7 @@
 // int LoggingEnabler = 0;
 // bool endLog = false;
 // int loggingDisabler = 0;
-int readingCnt = 0;
+uint32_t readingCnt = 0;
 // int prevReadingCnt = 0;
 
 int runNum = 0;
@@ -99,7 +99,7 @@ int color = ST77XX_BLACK;
 double pressureValueMax, pressureValueMin;
 float depthPascal = 0.0, depthMeter = 0.0;
 float allowed_depth_delta = 0.5; // maximum allowed change in depth between readings (in meters) to filter out erratic measurements
-float depthOffset = 0.0; // Offset to apply to depth readings for calibration purposes (in meters)
+const double depthOffset = 0.40; // Offset to apply to depth readings for calibration purposes (in meters)
 sReadings *psram_Readings;
 
 
@@ -117,14 +117,15 @@ GFXcanvas16 canvas(240, 135);
 Adafruit_NeoPixel  neopixel;
 
 // ------------ Setpoint Variables ------------
-double arrivalTime = NAN, packet_count = 5;   // TODO: validate packet_count
+double arrivalTime = NAN, packet_count_req = 7, packet_count = 0;   // TODO: validate packet_count
 int setpoint_index = 0, loiter_time_sec = 35; 
-float setpoint_margin = 0.05; // meters
-float setpoint[] = {0.40, 2.5, 1.0, 0.40, 2.5};
+float setpoint_margin = 0.15; // meters
+float setpoint[] = {0.40, 1.0-depthOffset, 0.40, 1.0-depthOffset};
+uint16_t status_color = ST77XX_BLACK;
 
 // ------------ PID Variables ------------
 double control_plant, control_setpoint, control_output, outputMin, outputMax = 0.0;
-double Kp = 20e3, Ki = 1.5e3, Kd = 0.2e3;
+double Kp = 27.5e3, Ki = 0.0, Kd = 0.5e3;
 uint32_t control_loop_rate_ms = 100; // How often to run control loop in milliseconds (e.g. 100 ms = 10 Hz)
 AutoPID BangBangBoi(&control_plant, &control_setpoint, &control_output, 
   outputMin, outputMax, Kp, Ki, Kd);

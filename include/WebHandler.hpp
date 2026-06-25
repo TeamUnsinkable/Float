@@ -14,7 +14,7 @@ extern AsyncWebServer server1;
 extern const char index_html[] PROGMEM;
 
 // ----------- Data Logging variables ------------
-extern int readingCnt;
+extern uint32_t readingCnt;
 extern sReadings *psram_Readings;
 static uint32_t lastTx = 0;
 

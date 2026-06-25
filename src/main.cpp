@@ -116,7 +116,7 @@ void loop() {
   // Get sensor readings
   sensor.read();
   depthMeter = sensor.depth();
-  depthPascal = sensor.pressure();
+  depthPascal = sensor.pressure()/10.0f; // Convert mBar to kPa
   int sec = rtc.getSecond();
   filterInput(depthMeter);
 
@@ -128,7 +128,7 @@ void loop() {
   // Record Sensor Readings
   if (recordData && sec != lastSecond && sec % 5 == 0 ){
     psram_Readings[readingCnt].runNumber = runNum;
-    psram_Readings[readingCnt].depthPa = depthPascal/10.0f;   // TODO: why divide by 10?    
+    psram_Readings[readingCnt].depthPa = depthPascal;         // in mBar    
     psram_Readings[readingCnt].depthM = depthMeter;           // current depth
     psram_Readings[readingCnt].lHour = rtc.getHour();         // current hour
     psram_Readings[readingCnt].lMin = rtc.getMinute();        // current minute
@@ -147,25 +147,25 @@ void loop() {
 
   // Wifi Reconnection Logic
   // TODO: Validate reconnection states
-  if (( WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED ) && 
-      ((millis() - lastWifiReconnect > 2000) || true)) {
-    lastWifiReconnect = millis();
-    WiFi.disconnect();
-    WiFi.begin(ssid, password);
-    // flashLED(2);
-    Serial.println("Lost wifi");
-  }
+  // if (( WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED ) && 
+  //     ((millis() - lastWifiReconnect > 2000) || true)) {
+  //   lastWifiReconnect = millis();
+  //   WiFi.disconnect();
+  //   WiFi.begin(ssid, password);
+  //   // flashLED(2);
+  //   Serial.println("Lost wifi");
+  // }
 
 
   Serial.println("Current Position: " + String(stepper.getCurrentPositionInSteps()));
   if (diving == true) {
     char* msg = (char*)malloc(128 * sizeof(char));
     sprintf(msg, "diving...\nCurrent Depth: %.2f m\n Current Setpoint: %.2f m\nCurrent Target: %ld steps", depthMeter, control_setpoint, stepper.getTargetPositionInSteps());
-    writeDisplay(msg, ST77XX_WHITE, ST77XX_BLACK);
+    writeDisplay(msg, ST77XX_WHITE, status_color);
     free(msg);
 
     // Setpoint Traversal Logic
-    // traverseSetpoints();
+    traverseSetpoints();
 
     // Serial.println("Controller Weights: Kp: " + String(Kp) + ", Ki: " + String(Ki) + ", Kd:" + String(Kd));
     Serial.println("Control output: " + String(control_output));
@@ -188,7 +188,6 @@ void loop() {
       color = ST77XX_BLACK;
       writeDisplay("COMPLETED MISSION!", ST77XX_WHITE, color);
     } 
-    
     delay(250);
   }
 }
@@ -198,24 +197,34 @@ void traverseSetpoints() {
       // Just arrived
       arrivalTime = millis();
       Serial.println("Setpoint reached: " + String(control_plant) + " meters");
-  } else if (!isnan(arrivalTime) && millis() - arrivalTime >= loiter_time_sec * 1e3 && packet_count >= 5 ) {
+      status_color = ST77XX_GREEN;
+  } else if (!isnan(arrivalTime) && millis() - arrivalTime >= loiter_time_sec * 1e3 && packet_count >= packet_count_req) {
       // Loiter complete — check bounds before incrementing
+      status_color = ST77XX_BLACK;
       arrivalTime = NAN;
       packet_count = 0;
       if (setpoint_index + 1 < sizeof(setpoint) / sizeof(setpoint[0]) ) {
           setpoint_index++;
+          if (setpoint[setpoint_index] > control_setpoint)
+          {
+            runNum++;
+          }
           control_setpoint = setpoint[setpoint_index];
           Serial.println("Setting next waypoint: " + String(control_setpoint) + "...");
       } else {
           Serial.println("Final setpoint reached!\nSurfacing...");
           surface();
+          control_setpoint = 0.4;
       }
   } else if (!isnan(arrivalTime) && !BangBangBoi.atSetPoint(setpoint_margin)) {
       // Departed early
+      status_color = ST77XX_ORANGE;
       arrivalTime = NAN;
+      packet_count = 0;
       Serial.println("Departed from setpoint, resetting timer");
   } else if (!isnan(arrivalTime)) {
       // Still loitering
+      status_color = ST77XX_YELLOW;
       Serial.println("Loitering at setpoint: " + String(control_plant) + " meters");
   }
 }
@@ -242,7 +251,7 @@ void filterInput(double depthValue){
     control_plant = previousDepth;
   } else {
     // Otherwise, use the new value
-    depthValue += depthOffset; // Apply calibration offset
+    // depthValue += depthOffset; // Apply calibration offset
     control_plant = depthValue;
     previousDepth = depthValue;
   }
@@ -297,11 +306,7 @@ void dive(void) {
     runNum++;  
 
     // Display startup message
-    canvas.fillScreen(ST77XX_GREEN);
-    canvas.setCursor(0, 25);
-    canvas.setFont(&FreeSans9pt7b);
-    canvas.print("We diving bitch!");
-    display.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+    control_setpoint = setpoint[setpoint_index];
   } 
 }
 
@@ -309,7 +314,6 @@ void surface(void){
   recordData = false;
   diving = false;
   control_setpoint = -10.0;
-  stepper.setTargetPositionInSteps(-step_pos_max);
 }
 
 void writeDisplay(const char *message, uint16_t color = ST77XX_WHITE,

@@ -110,8 +110,8 @@ void setupWebServer() {
           request->send(400, "text/plain", "Loop time must be at least 1 ms.");
           return;
       }
-
-      BangBangBoi.stop();
+      // Would reset the PID controller on any changes. No bueno
+      // BangBangBoi.stop();
 
       if (!(newKi == Ki && newKp == Kp && newKd == Kd)) {
             // Reset controller
