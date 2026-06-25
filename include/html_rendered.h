@@ -195,6 +195,16 @@ tbody td:first-child{color:var(--text);}
 ::-webkit-scrollbar-thumb{background:var(--border-s);border-radius:3px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--faint);}
 
+/* ── Graph view ── */
+.graph-wrap{flex:1;min-height:0;position:relative;padding:12px 14px;background:var(--bg);}
+.graph-wrap canvas{display:block;width:100%;height:100%;}
+.graph-empty{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:var(--faint);font-family:var(--font);font-size:13px;text-align:center;padding:20px;
+  pointer-events:none;
+}
+@media(max-width:700px){.graph-wrap{height:55vh;flex:none;}}
+
 /* ── Competition view ── */
 .comp-body{
   flex:1;overflow-y:auto;padding:10px 14px;background:var(--bg);
@@ -235,7 +245,7 @@ tbody td:first-child{color:var(--text);}
 
 <!-- Header -->
 <header>
-  <div class="logo">
+  <div class="logo" id="logoBtn" onclick="resetLayout()" role="button" tabindex="0" title="Show all panels (stacked layout)" style="cursor:pointer">
     <svg width="26" height="26" viewBox="0 0 26 26" fill="none" style="color:var(--primary)">
       <circle cx="13" cy="13" r="11.5" stroke="currentColor" stroke-width="1.5"/>
       <path d="M13 6.5v6.5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -259,6 +269,7 @@ tbody td:first-child{color:var(--text);}
   <button onclick="showTab('metrics')">&#x1F4CA; Readings</button>
   <button onclick="showTab('tuning')">&#x2699;&#xFE0F; Tuning</button>
   <button onclick="showTab('table')">&#x1F4CB; Table</button>
+  <button onclick="showTab('graph')">&#x1F4C8; Graph</button>
   <button onclick="showTab('comp')">&#x1F3C6; Competition</button>
 </nav>
 
@@ -326,6 +337,23 @@ tbody td:first-child{color:var(--text);}
       </div>
     </div>
 
+    <!-- Graph pane -->
+    <div class="pane sec active" id="sec-graph">
+      <div class="ph">
+        <span class="ph-title">&#x1F4C8; Depth Over Time</span>
+        <div class="ph-acts">
+          <button class="ib" onclick="loadGraph()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div class="graph-wrap">
+        <canvas id="depthChart"></canvas>
+        <div class="graph-empty" id="graphEmpty">No data &mdash; tap Refresh to plot depth</div>
+      </div>
+    </div>
+
     <!-- Competition log pane -->
     <div class="pane sec active" id="sec-comp">
       <div class="ph">
@@ -368,7 +396,8 @@ tbody td:first-child{color:var(--text);}
   };
   let d=matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";
   root.setAttribute("data-theme",d);btn.innerHTML=icons[d];
-  btn.addEventListener("click",()=>{d=d==="dark"?"light":"dark";root.setAttribute("data-theme",d);btn.innerHTML=icons[d];});
+  btn.addEventListener("click",()=>{d=d==="dark"?"light":"dark";root.setAttribute("data-theme",d);btn.innerHTML=icons[d];
+    if(typeof graphData!=='undefined'&&graphData.length)drawDepthChart(graphData);});
 })();
 
 // ── Mobile tabs ──
@@ -377,9 +406,27 @@ const MOBILE_SECTIONS={
   metrics:['sec-metrics'],
   tuning:['sec-tuning'],
   table:['sec-table'],
+  graph:['sec-graph'],
   comp:['sec-comp']
 };
 const isMobile=()=>window.innerWidth<=700;
+
+// Revert mobile minimized (single-tab) view back to the default stacked layout.
+function resetLayout(){
+  if(!isMobile())return;
+  // Show every section again (stacked default)
+  document.querySelectorAll('.sec').forEach(s=>s.classList.add('active'));
+  // Clear the active tab highlight since no single tab is selected
+  document.querySelectorAll('#mobTabs button').forEach(b=>b.classList.remove('active'));
+}
+
+// Keyboard activation for the logo (Enter / Space)
+(function(){
+  const logo=document.getElementById('logoBtn');
+  if(logo)logo.addEventListener('keydown',e=>{
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();resetLayout();}
+  });
+})();
 
 function showTab(tab){
   if(!isMobile())return;
@@ -550,6 +597,153 @@ function copyComp() {
   ).join('\n');
   navigator.clipboard.writeText(text);
 }
+
+// ── Depth Graph ──
+let graphData = [];
+
+function loadGraph(){
+  const empty = document.getElementById('graphEmpty');
+  empty.style.display = 'flex';
+  empty.textContent = 'Loading\u2026';
+  fetch('/getReadingsCSV').then(r => r.text()).then(csv => {
+    const rows = csv.trim().split('\n').slice(1).filter(r => r.trim());
+    if (!rows.length) {
+      graphData = [];
+      empty.style.display = 'flex';
+      empty.textContent = 'No data recorded yet';
+      drawDepthChart([]);
+      return;
+    }
+    graphData = rows.map(row => {
+      const c = row.split(',');
+      const h = parseInt(c[1]) || 0, m = parseInt(c[2]) || 0, s = parseInt(c[3]) || 0;
+      return {
+        run:    c[0] || '?',
+        // seconds since midnight, used as the time axis
+        t:      h * 3600 + m * 60 + s,
+        label:  String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'),
+        depthM: parseFloat(c[5]) || 0
+      };
+    });
+    empty.style.display = 'none';
+    drawDepthChart(graphData);
+    if (isMobile()) showTab('graph');
+  }).catch(e => {
+    empty.style.display = 'flex';
+    empty.textContent = 'Load failed';
+  });
+}
+
+function cssVar(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function drawDepthChart(data){
+  const canvas = document.getElementById('depthChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || canvas.parentElement.clientWidth;
+  const cssH = canvas.clientHeight || canvas.parentElement.clientHeight;
+  canvas.width = Math.max(1, Math.floor(cssW * dpr));
+  canvas.height = Math.max(1, Math.floor(cssH * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  if (!data.length) return;
+
+  const colText = cssVar('--muted') || '#8892a4';
+  const colFaint = cssVar('--faint') || '#4a5568';
+  const colGrid = cssVar('--border') || 'rgba(255,255,255,0.07)';
+  const colLine = cssVar('--primary') || '#00b4d8';
+  const colFill = cssVar('--primary-d') || 'rgba(0,180,216,0.13)';
+
+  const padL = 52, padR = 16, padT = 16, padB = 34;
+  const plotW = cssW - padL - padR;
+  const plotH = cssH - padT - padB;
+  if (plotW <= 0 || plotH <= 0) return;
+
+  const xs = data.map(d => d.t);
+  const ys = data.map(d => d.depthM);
+  let xMin = Math.min(...xs), xMax = Math.max(...xs);
+  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  if (xMin === xMax) { xMin -= 1; xMax += 1; }
+  // Pad y range a little; ensure non-zero span
+  if (yMin === yMax) { yMin -= 0.1; yMax += 0.1; }
+  const yPad = (yMax - yMin) * 0.08;
+  yMin -= yPad; yMax += yPad;
+
+  const xPix = v => padL + ((v - xMin) / (xMax - xMin)) * plotW;
+  const yPix = v => padT + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+
+  ctx.font = "10px 'JetBrains Mono', monospace";
+  ctx.textBaseline = 'middle';
+
+  // Horizontal grid + y labels
+  const yTicks = 5;
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= yTicks; i++){
+    const val = yMin + (yMax - yMin) * (i / yTicks);
+    const y = yPix(val);
+    ctx.strokeStyle = colGrid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + plotW, y);
+    ctx.stroke();
+    ctx.fillStyle = colFaint;
+    ctx.fillText(val.toFixed(3), padL - 8, y);
+  }
+
+  // X labels (first, middle, last)
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const xTickIdx = data.length === 1 ? [0] : [0, Math.floor((data.length-1)/2), data.length-1];
+  xTickIdx.forEach(idx => {
+    const d = data[idx];
+    const x = xPix(d.t);
+    ctx.fillStyle = colFaint;
+    ctx.fillText(d.label, Math.min(Math.max(x, padL+14), padL+plotW-14), padT + plotH + 8);
+  });
+
+  // Axis labels
+  ctx.fillStyle = colText;
+  ctx.save();
+  ctx.translate(12, padT + plotH/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Depth (m)', 0, 0);
+  ctx.restore();
+
+  // Build line path
+  const pts = data.map(d => ({ x: xPix(d.t), y: yPix(d.depthM) }));
+
+  // Area fill
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, padT + plotH);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, padT + plotH);
+  ctx.closePath();
+  ctx.fillStyle = colFill;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+  ctx.strokeStyle = colLine;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Points (only if not too dense)
+  if (pts.length <= 120){
+    ctx.fillStyle = colLine;
+    pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill(); });
+  }
+}
+
+// Redraw on resize / theme change to keep the chart crisp
+window.addEventListener('resize', () => { if (graphData.length) drawDepthChart(graphData); });
 
 // ── Live Telemetry (SSE) ──
 (function () {
