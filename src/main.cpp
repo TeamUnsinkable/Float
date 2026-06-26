@@ -158,7 +158,8 @@ void loop() {
 
 
   Serial.println("Current Position: " + String(stepper.getCurrentPositionInSteps()));
-  if (diving == true) {
+  // Validate at least 1 packet has been recorded
+  if (diving == true && millis() - pDiveTime > 10000) {
     char* msg = (char*)malloc(128 * sizeof(char));
     sprintf(msg, "diving...\nCurrent Depth: %.2f m\n Current Setpoint: %.2f m\nCurrent Target: %ld steps", depthMeter, control_setpoint, stepper.getTargetPositionInSteps());
     writeDisplay(msg, ST77XX_WHITE, status_color);

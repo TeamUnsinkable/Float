@@ -99,7 +99,8 @@ int color = ST77XX_BLACK;
 double pressureValueMax, pressureValueMin;
 float depthPascal = 0.0, depthMeter = 0.0;
 float allowed_depth_delta = 0.5; // maximum allowed change in depth between readings (in meters) to filter out erratic measurements
-const double depthOffset = 0.40; // Offset to apply to depth readings for calibration purposes (in meters)
+// const double depthOffset = 0.40; // Offset to apply to depth readings for calibration purposes (in meters)
+const double depthOffset = 0.5; // For pool testing
 sReadings *psram_Readings;
 
 
@@ -120,7 +121,7 @@ Adafruit_NeoPixel  neopixel;
 double arrivalTime = NAN, packet_count_req = 7, packet_count = 0;   // TODO: validate packet_count
 int setpoint_index = 0, loiter_time_sec = 35; 
 float setpoint_margin = 0.15; // meters
-float setpoint[] = {0.40, 1.0-depthOffset, 0.40, 1.0-depthOffset};
+float setpoint[] = {0.20, 1.0-depthOffset, 0.20, 1.0-depthOffset};
 uint16_t status_color = ST77XX_BLACK;
 
 // ------------ PID Variables ------------
