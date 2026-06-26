@@ -137,7 +137,7 @@ void loop() {
     readingCnt++;
 
     // Count to ensure 7 packets are recorded
-    if (arrivalTime != NAN){
+    if (!isnan(arrivalTime)){
       packet_count++;
     }
 
@@ -145,21 +145,16 @@ void loop() {
   }
   lastSecond = sec;
 
-  // Wifi Reconnection Logic
-  // TODO: Validate reconnection states
-  // if (( WiFi.status() == WL_CONNECTION_LOST || WiFi.status() != WL_CONNECTED ) && 
-  //     ((millis() - lastWifiReconnect > 2000) || true)) {
-  //   lastWifiReconnect = millis();
-  //   WiFi.disconnect();
-  //   WiFi.begin(ssid, password);
-  //   // flashLED(2);
-  //   Serial.println("Lost wifi");
-  // }
-
 
   Serial.println("Current Position: " + String(stepper.getCurrentPositionInSteps()));
   // Validate at least 1 packet has been recorded
-  if (diving == true && millis() - pDiveTime > 10000) {
+  if (pDiveTime < 25000){
+    writeDisplay("Transmitting Data", ST77XX_WHITE, ST77XX_ORANGE);
+  }
+  
+  if (diving == true && millis() - pDiveTime > 25000) {
+    
+    // Display contents
     char* msg = (char*)malloc(128 * sizeof(char));
     sprintf(msg, "diving...\nCurrent Depth: %.2f m\n Current Setpoint: %.2f m\nCurrent Target: %ld steps", depthMeter, control_setpoint, stepper.getTargetPositionInSteps());
     writeDisplay(msg, ST77XX_WHITE, status_color);
@@ -179,14 +174,13 @@ void loop() {
     limitCheck(control_output);
   }
 
-
   // Surfacing Logic
-  if (control_setpoint == -10.0) {
+  if (surfacing) {
     if (rtc.getSecond() % 2 == 0) {
-      color = ST77XX_RED;
-      writeDisplay("COMPLETED MISSION!", ST77XX_WHITE, color);
+      color = ST77XX_WHITE;
+      writeDisplay("COMPLETED MISSION!", ST77XX_BLACK, color);
     } else if (color == ST77XX_RED) {
-      color = ST77XX_BLACK;
+      color = ST77XX_GREEN;
       writeDisplay("COMPLETED MISSION!", ST77XX_WHITE, color);
     } 
     delay(250);
@@ -194,9 +188,11 @@ void loop() {
 }
 
 void traverseSetpoints() {
+  const int numSetpoints = sizeof(setpoint) / sizeof(setpoint[0]);
   if (BangBangBoi.atSetPoint(setpoint_margin) && isnan(arrivalTime)) {
       // Just arrived
       arrivalTime = millis();
+      packet_count = 0; 
       Serial.println("Setpoint reached: " + String(control_plant) + " meters");
       status_color = ST77XX_GREEN;
   } else if (!isnan(arrivalTime) && millis() - arrivalTime >= loiter_time_sec * 1e3 && packet_count >= packet_count_req) {
@@ -204,10 +200,11 @@ void traverseSetpoints() {
       status_color = ST77XX_BLACK;
       arrivalTime = NAN;
       packet_count = 0;
-      if (setpoint_index + 1 < sizeof(setpoint) / sizeof(setpoint[0]) ) {
-          setpoint_index++;
-          if (setpoint[setpoint_index] > control_setpoint)
-          {
+      setpoint_index++;
+      if (setpoint_index < numSetpoints) {
+          status_color = ST77XX_MAGENTA;
+          // Increment run number if going up
+          if (setpoint[setpoint_index] > control_setpoint){
             runNum++;
           }
           control_setpoint = setpoint[setpoint_index];
@@ -215,7 +212,7 @@ void traverseSetpoints() {
       } else {
           Serial.println("Final setpoint reached!\nSurfacing...");
           surface();
-          control_setpoint = 0.4;
+          // control_setpoint = 0.4;
       }
   } else if (!isnan(arrivalTime) && !BangBangBoi.atSetPoint(setpoint_margin)) {
       // Departed early
@@ -300,6 +297,7 @@ void flashLED(int flashes) {
 void dive(void) {
   if (diving == false) {
     diving = true;
+    surfacing = false;
     recordData = true;
     Serial.println("I'ma divin', bitch!");
     pDiveTime = millis(); 
@@ -314,7 +312,8 @@ void dive(void) {
 void surface(void){
   recordData = false;
   diving = false;
-  control_setpoint = -10.0;
+  surfacing = true;
+  // control_setpoint = -10.0;
 }
 
 void writeDisplay(const char *message, uint16_t color = ST77XX_WHITE,

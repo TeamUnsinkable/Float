@@ -47,6 +47,7 @@ uint32_t readingCnt = 0;
 
 int runNum = 0;
 bool diving = false;
+bool surfacing = false;
 int lastSecond = -1;
 
 // static const long SERIAL_BAUD = 9600;
@@ -61,8 +62,8 @@ const char* ssid = "SM-N950U48f"; //"Justin's S25+";
 const char* password = "bucketman";//"8e9uphtuumacfst";
 const char* hostname = "float-esp32";
 const char* ntpServer = "pool.ntp.org";
-const int daylightOffset_sec = 3600;
-const long gmtOffset_sec = -18000;
+const int daylightOffset_sec = 0;    // UTC Time
+const long gmtOffset_sec = 0;        // UTC Time
 uint32_t lastWifiReconnect = 0;
 extern const char index_html[] PROGMEM;
 // Static IP configuration 
@@ -100,7 +101,7 @@ double pressureValueMax, pressureValueMin;
 float depthPascal = 0.0, depthMeter = 0.0;
 float allowed_depth_delta = 0.5; // maximum allowed change in depth between readings (in meters) to filter out erratic measurements
 // const double depthOffset = 0.40; // Offset to apply to depth readings for calibration purposes (in meters)
-const double depthOffset = 0.5; // For pool testing
+const double depthOffset = 51.5e-2; // For pool testing
 sReadings *psram_Readings;
 
 
@@ -118,15 +119,15 @@ GFXcanvas16 canvas(240, 135);
 Adafruit_NeoPixel  neopixel;
 
 // ------------ Setpoint Variables ------------
-double arrivalTime = NAN, packet_count_req = 7, packet_count = 0;   // TODO: validate packet_count
+double arrivalTime = NAN, packet_count_req = 10, packet_count = 0;   // TODO: validate packet_count
 int setpoint_index = 0, loiter_time_sec = 35; 
 float setpoint_margin = 0.15; // meters
-float setpoint[] = {0.20, 1.0-depthOffset, 0.20, 1.0-depthOffset};
+float setpoint[] = {2.5-depthOffset, 0.40, 2.5-depthOffset, 0.40};
 uint16_t status_color = ST77XX_BLACK;
 
 // ------------ PID Variables ------------
 double control_plant, control_setpoint, control_output, outputMin, outputMax = 0.0;
-double Kp = 27.5e3, Ki = 0.0, Kd = 0.5e3;
+double Kp = 30e3, Ki = 500.0, Kd = 1e3;
 uint32_t control_loop_rate_ms = 100; // How often to run control loop in milliseconds (e.g. 100 ms = 10 Hz)
 AutoPID BangBangBoi(&control_plant, &control_setpoint, &control_output, 
   outputMin, outputMax, Kp, Ki, Kd);

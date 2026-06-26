@@ -557,9 +557,9 @@ function renderComp(data) {
       <div class="comp-main">
         <div class="comp-top">
           <span class="comp-run">Profile #${d.run}</span>
-          <span class="comp-id">EX002</span>
+          <span class="comp-id">EX08</span>
           <span class="comp-time">${d.hour}:${d.min}:${d.sec}</span>
-          <span class="comp-tz">EST</span>
+          <span class="comp-tz">UTC</span>
         </div>
         <div class="comp-depth">
           <div class="comp-kpa">${kpa}<span>kPa</span></div>
@@ -593,7 +593,7 @@ function clearComp() {
 
 function copyComp() {
   const text = compData.map(d =>
-    `Profile#:${d.run}  EX002  ${d.hour}:${d.min}:${d.sec}  EST   ${(d.depthPa/1000).toFixed(3)} kPa  ${d.depthM.toFixed(4)} meters`
+    `Profile#:${d.run}  EX08  ${d.hour}:${d.min}:${d.sec}  UTC   ${(d.depthPa/1000).toFixed(3)} kPa  ${d.depthM.toFixed(4)} meters`
   ).join('\n');
   navigator.clipboard.writeText(text);
 }
@@ -782,6 +782,11 @@ window.addEventListener('resize', () => { if (graphData.length) drawDepthChart(g
 
   connect();
 })();
+
+document.addEventListener('DOMContentLoaded', function () {
+  loadGraph();
+  loadCompView();
+});
 </script>
 </body>
 </html>
